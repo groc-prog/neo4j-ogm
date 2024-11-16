@@ -8,7 +8,6 @@ services:
       - 7474:7474
     volumes:
       - neo4j:/data
-      - neo4j:/logs
     environment:
       NEO4J_AUTH: neo4j/password
 
@@ -21,7 +20,6 @@ services:
       - "7444:7444"
     volumes:
       - memgraph:/var/lib
-      - memgraph:/var/log
     environment:
       - MEMGRAPH="--storage-properties-on-edges=true --log-level=TRACE"
 

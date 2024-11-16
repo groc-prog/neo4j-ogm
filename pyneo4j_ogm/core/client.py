@@ -7,14 +7,14 @@ import importlib.util
 import inspect
 import os
 from abc import ABC, abstractmethod
-from asyncio import iscoroutinefunction
+from contextlib import asynccontextmanager
 from functools import wraps
 from logging import Logger
 from typing import (
     Any,
+    AsyncGenerator,
     Callable,
     Dict,
-    Iterator,
     List,
     LiteralString,
     Optional,
@@ -36,6 +36,7 @@ from pyneo4j_ogm.exceptions import (
     ModelResolveError,
     NoTransactionInProgress,
     TransactionInProgress,
+    UnsupportedDatabaseVersionError,
 )
 from pyneo4j_ogm.logger import logger
 
@@ -71,41 +72,31 @@ def initialize_models_after(func: Callable) -> Callable:
     return wrapper
 
 
-def ensure_initialized(func: Callable) -> Callable:
+def ensure_initialized(func):
     """
     Ensures the driver of the client is initialized before interacting with the database.
 
     Args:
-        func (Callable): The function to be decorated, which can be either synchronous
-            or asynchronous.
+        func (Callable): The function to be decorated.
 
     Raises:
         ClientNotInitializedError: The client is not initialized yet.
 
     Returns:
-        Callable: A wrapped function that includes additional functionality for both
-            sync and async functions.
+        A wrapped function that includes additional functionality.
     """
 
     @wraps(func)
-    def sync_wrapper(self, *args, **kwargs) -> None:
+    async def wrapper(self, *args, **kwargs):
         if getattr(self, "_driver", None) is None:
             raise ClientNotInitializedError()
 
-        return func(self, *args, **kwargs)
-
-    @wraps(func)
-    async def async_wrapper(self, *args, **kwargs) -> None:
-        if getattr(self, "_driver", None) is None:
-            raise ClientNotInitializedError()
-
-        return await func(self, *args, **kwargs)
+        result = await func(self, *args, **kwargs)
+        return result
 
     logger.debug("Ensuring client is initialized")
-    if iscoroutinefunction(func):
-        return async_wrapper
-
-    return sync_wrapper
+    wrapper.__annotations__ = func.__annotations__
+    return wrapper
 
 
 class Pyneo4jClient(ABC):
@@ -143,10 +134,6 @@ class Pyneo4jClient(ABC):
         self._using_batches = False
 
     @abstractmethod
-    async def drop_nodes(self) -> Self:
-        pass
-
-    @abstractmethod
     async def drop_constraints(self) -> Self:
         pass
 
@@ -155,11 +142,13 @@ class Pyneo4jClient(ABC):
         pass
 
     @abstractmethod
-    async def with_batching(self) -> Iterator[None]:
-        pass
-
-    @abstractmethod
     async def _check_database_version(self) -> None:
+        """
+        Checks if the connected database is running a supported version.
+
+        Raises:
+            UnsupportedDatabaseVersionError: Connected to a database with a unsupported version.
+        """
         pass
 
     @ensure_initialized
@@ -394,6 +383,36 @@ class Pyneo4jClient(ABC):
 
         return self
 
+    @asynccontextmanager
+    @ensure_initialized
+    async def with_batching(self) -> AsyncGenerator[None, Any]:
+        """
+        Batches all queries called inside this context manager into a single transaction. Inside
+        the context, both client queries and model methods can be called.
+        """
+        try:
+            self._logger.info("Starting batch transaction")
+            await self._begin_transaction()
+
+            yield None
+
+            self._logger.info("Batching transaction finished")
+            await self._commit_transaction()
+        except Exception as exc:
+            self._logger.error(exc)
+            await self._rollback_transaction()
+
+    @ensure_initialized
+    async def drop_nodes(self) -> Self:
+        """
+        Deletes all nodes and relationships.
+        """
+        self._logger.warning("Dropping all nodes and relationships")
+        await self.cypher("MATCH (n) DETACH DELETE n")
+
+        self._logger.info("All nodes and relationships deleted")
+        return self
+
     @ensure_initialized
     async def _begin_transaction(self) -> None:
         """
@@ -460,6 +479,32 @@ class Pyneo4jClient(ABC):
 class Neo4jClient(Pyneo4jClient):
     def __str__(self) -> str:
         return f"(Neo4j){hex(id(self))}"
+
+    @ensure_initialized
+    async def _check_database_version(self) -> None:
+        self._logger.debug("Checking if Neo4j version is supported")
+        server_info = await cast(AsyncDriver, self._driver).get_server_info()
+
+        version = server_info.agent.split("/")[1]
+
+        if int(version.split(".")[0]) < 5:
+            raise UnsupportedDatabaseVersionError()
+
+    @ensure_initialized
+    async def drop_constraints(self) -> Self:
+        """
+        Drops all existing constraints.
+        """
+        self._logger.debug("Discovering constraints")
+        results, _ = await self.cypher("SHOW CONSTRAINTS")
+
+        self._logger.warning("Dropping all constraints")
+        for constraint in results:
+            self._logger.debug("Dropping constraint %s", constraint[1])
+            await self.cypher(f"DROP CONSTRAINT {constraint[1]}")
+
+        self._logger.debug("Dropped %s constraints", len(results))
+        return self
 
 
 class MemgraphClient(Pyneo4jClient):

@@ -63,3 +63,12 @@ class NoTransactionInProgress(Pyneo4jError):
 
     def __init__(self, *args: object) -> None:
         super().__init__("There is no active session/transaction to commit or roll back", *args)
+
+
+class UnsupportedDatabaseVersionError(Pyneo4jError):
+    """
+    The version of the connected database is not supported.
+    """
+
+    def __init__(self, *args: object) -> None:
+        super().__init__("The version of the connected database is not supported", *args)

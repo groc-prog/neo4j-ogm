@@ -5,7 +5,7 @@ will be handled by this class.
 
 import threading
 from contextlib import contextmanager
-from typing import Iterator, List, Optional, Set, cast
+from typing import Any, Generator, List, Optional, Set, cast
 
 from pyneo4j_ogm.core.client import Pyneo4jClient
 from pyneo4j_ogm.exceptions import InvalidClientError
@@ -120,7 +120,7 @@ class Registry:
 
 
 @contextmanager
-def with_client(client: Pyneo4jClient) -> Iterator[Pyneo4jClient]:
+def with_client(client: Pyneo4jClient) -> Generator[Pyneo4jClient, Any, None]:
     """
     Temporarily sets the specified client as the active client within a context.
 
