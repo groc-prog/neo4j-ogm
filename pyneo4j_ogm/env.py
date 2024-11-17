@@ -30,4 +30,4 @@ def from_env(variable: EnvVariable, default: Any = None) -> Any:
         Any: The unparsed value from the env variable.
     """
 
-    return environ.get(cast(str, variable), default)
+    return environ.get(variable.value, default)
