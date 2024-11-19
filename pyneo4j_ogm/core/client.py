@@ -27,7 +27,6 @@ from typing import (
 )
 
 from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession, AsyncTransaction, Query
-from neo4j.exceptions import AuthError
 
 from pyneo4j_ogm.core.node import NodeModel
 from pyneo4j_ogm.core.relationship import RelationshipModel
@@ -41,7 +40,7 @@ from pyneo4j_ogm.exceptions import (
 from pyneo4j_ogm.logger import logger
 
 
-def initialize_models_after(func: Callable) -> Callable:
+def initialize_models_after(func):
     """
     Triggers model initialization for creating indexes/constraints and doing other setup work.
 
@@ -114,6 +113,7 @@ class Pyneo4jClient(ABC):
     _session: Optional[AsyncSession]
     _transaction: Optional[AsyncTransaction]
     _models: Set[Union[Type[NodeModel], Type[RelationshipModel]]]
+    _initialized_models: Set[Union[Type[NodeModel], Type[RelationshipModel]]]
     _skip_constraint_creation: bool
     _skip_index_creation: bool
     _using_batches: bool
@@ -129,16 +129,23 @@ class Pyneo4jClient(ABC):
         self._session = None
         self._transaction = None
         self._models = set()
+        self._initialized_models = set()
         self._skip_constraint_creation = False
         self._skip_index_creation = False
         self._using_batches = False
 
     @abstractmethod
     async def drop_constraints(self) -> Self:
+        """
+        Drops all existing constraints.
+        """
         pass
 
     @abstractmethod
     async def drop_indexes(self) -> Self:
+        """
+        Drops all existing indexes.
+        """
         pass
 
     @abstractmethod
@@ -151,7 +158,16 @@ class Pyneo4jClient(ABC):
         """
         pass
 
-    @ensure_initialized
+    @abstractmethod
+    async def _initialize_models(self) -> None:
+        """
+        Initializes all registered models by setting the defined indexes/constraints. This
+        method has to be implemented by each client because of differences in index/constraint
+        creation. All registered models have to be added to the `_initialized_models` set to
+        allow tracking of models which have not been initialized yet.
+        """
+        pass
+
     async def connected(self) -> bool:
         """
         Checks if the client is already connected or not. If the client has been connected, but
@@ -169,13 +185,6 @@ class Pyneo4jClient(ABC):
 
             self._logger.debug("Verifying connectivity to database")
             await self._driver.verify_connectivity()
-
-            self._logger.debug("Checking database authentication")
-            authenticated = await self._driver.verify_authentication()
-
-            if not authenticated:
-                raise AuthError()
-
             return True
         except Exception as exc:
             self._logger.error(exc)
@@ -210,16 +219,8 @@ class Pyneo4jClient(ABC):
         self._logger.info("Connecting to database %s with %s", uri, self)
         self._driver = AsyncGraphDatabase.driver(uri=uri, *args, **kwargs)
 
-        try:
-            self._logger.debug("Checking connectivity and authentication")
-            await self._driver.verify_connectivity()
-            authenticated = await self._driver.verify_authentication()
-
-            if not authenticated:
-                raise AuthError()
-        except Exception as exc:
-            self._logger.error(exc)
-            await self.close()
+        self._logger.debug("Checking connectivity and authentication")
+        await self._driver.verify_connectivity()
 
         self._logger.debug("Checking for compatible database version")
         await self._check_database_version()
@@ -472,13 +473,41 @@ class Pyneo4jClient(ABC):
         self._session = None
         self._logger.debug("Session closed")
 
-    async def _initialize_models(self) -> None:
-        pass
-
 
 class Neo4jClient(Pyneo4jClient):
+    """
+    Neo4j client used for interacting with a Neo4j database. Provides basic functionality for querying, indexing,
+    constraints and other utilities.
+    """
+
     def __str__(self) -> str:
         return f"(Neo4j){hex(id(self))}"
+
+    @ensure_initialized
+    async def drop_constraints(self) -> Self:
+        self._logger.debug("Discovering constraints")
+        results, _ = await self.cypher("SHOW CONSTRAINTS")
+
+        self._logger.warning("Dropping all constraints")
+        for constraint in results:
+            self._logger.debug("Dropping constraint %s", constraint[1])
+            await self.cypher(f"DROP CONSTRAINT {constraint[1]}")
+
+        self._logger.debug("Dropped %s constraints", len(results))
+        return self
+
+    @ensure_initialized
+    async def drop_indexes(self) -> Self:
+        self._logger.debug("Discovering indexes")
+        results, _ = await self.cypher("SHOW INDEXES")
+
+        self._logger.warning("Dropping all indexes")
+        for index in results:
+            self._logger.debug("Dropping index %s", index[1])
+            await self.cypher(f"DROP INDEX {index[1]}")
+
+        self._logger.debug("Dropped %s indexes", len(results))
+        return self
 
     @ensure_initialized
     async def _check_database_version(self) -> None:
@@ -491,22 +520,14 @@ class Neo4jClient(Pyneo4jClient):
             raise UnsupportedDatabaseVersionError()
 
     @ensure_initialized
-    async def drop_constraints(self) -> Self:
-        """
-        Drops all existing constraints.
-        """
-        self._logger.debug("Discovering constraints")
-        results, _ = await self.cypher("SHOW CONSTRAINTS")
-
-        self._logger.warning("Dropping all constraints")
-        for constraint in results:
-            self._logger.debug("Dropping constraint %s", constraint[1])
-            await self.cypher(f"DROP CONSTRAINT {constraint[1]}")
-
-        self._logger.debug("Dropped %s constraints", len(results))
-        return self
+    async def _initialize_models(self) -> None:
+        pass
 
 
 class MemgraphClient(Pyneo4jClient):
     def __str__(self) -> str:
         return f"(Memgraph){hex(id(self))}"
+
+    @ensure_initialized
+    async def _initialize_models(self) -> None:
+        pass

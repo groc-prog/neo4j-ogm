@@ -4,7 +4,7 @@ Environment variables used across the package and helper functions.
 
 from enum import Enum
 from os import environ
-from typing import Any, cast
+from typing import Any
 
 
 class EnvVariable(Enum):
