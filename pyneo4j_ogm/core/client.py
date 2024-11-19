@@ -38,6 +38,7 @@ from pyneo4j_ogm.exceptions import (
     UnsupportedDatabaseVersionError,
 )
 from pyneo4j_ogm.logger import logger
+from pyneo4j_ogm.types.memgraph import MemgraphIndexType
 
 
 def initialize_models_after(func):
@@ -243,6 +244,7 @@ class Pyneo4jClient(ABC):
         self,
         query: Union[str, LiteralString, Query],
         parameters: Optional[Dict[str, Any]] = None,
+        auto_committing: bool = False,
         resolve_models: bool = False,
         raise_on_resolve_exc: bool = False,
     ) -> Tuple[List[List[Any]], List[str]]:
@@ -252,18 +254,23 @@ class Pyneo4jClient(ABC):
         By default, the model parsing will not raise an exception if it fails. This can be changed
         with the `raise_on_resolve_exc` parameter.
 
+        **Note:** When using `Memgraph as a database`, some queries which have info reporting do not allow
+        the usage of multicommand transactions. To still be able to run the query, you can set the
+        `auto_committing` parameter to `True`. In doing so, the query will be run using a new session
+        rather than a current transaction. This also meant that those queries `will not be batched` with others
+        when using `with_batching`.
+
         Args:
             query (Union[str, LiteralString, Query]): Neo4j Query class or query string. Same as queries
                 for the Neo4j driver.
             parameters (Optional[Dict[str, Any]]): Optional parameters used by the query. Same as parameters
                 for the Neo4j driver. Defaults to `None`.
+            auto_committing (bool): Whether to use session or transaction for running the query. Can be used for
+                Memgraph queries using info reporting. Defaults to `false`.
             resolve_models (bool): Whether to attempt to resolve the nodes/relationships returned by the query
                 to their corresponding models. Models must be registered for this to work. Defaults to `False`.
             raise_on_resolve_exc (bool): Whether to silently fail or raise a `ModelResolveError` error if resolving
                 a node/relationship fails. Defaults to `False`.
-
-        Raises:
-            ModelResolveError: `raise_on_resolve_exc` is set to `True` and resolving a result fails.
 
         Returns:
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
@@ -274,40 +281,12 @@ class Pyneo4jClient(ABC):
         if parameters is not None and isinstance(parameters, dict):
             query_parameters = parameters
 
-        if not self._using_batches:
-            # If we are currently using batching, we should already be inside a active session/transaction
-            await self._begin_transaction()
-
-        try:
-            self._logger.info("%s with parameters %s", query, query_parameters)
-            query_result = await cast(AsyncTransaction, self._transaction).run(
-                cast(LiteralString, query), query_parameters
+        if auto_committing:
+            return await self._with_auto_committing_transaction(
+                query, query_parameters, resolve_models, raise_on_resolve_exc
             )
-
-            self._logger.debug("Parsing query results")
-            results = [list(result.values()) async for result in query_result]
-            keys = list(query_result.keys())
-        except Exception as exc:
-            self._logger.error("Query exception: %s", exc)
-
-            if not self._using_batches:
-                # Same as in the beginning, we don't want to roll back anything if we use batching
-                await self._rollback_transaction()
-
-        if resolve_models:
-            try:
-                # TODO: Try to resolve models and raise an exception depending on the parameters provided
-                pass
-            except Exception as exc:
-                self._logger.warning("Resolving models failed with %s", exc)
-                if raise_on_resolve_exc:
-                    raise ModelResolveError() from exc
-
-        if not self._using_batches:
-            # Again, don't commit anything to the database when batching is enabled
-            await self._commit_transaction()
-
-        return results, keys
+        else:
+            return await self._with_implicit_transaction(query, query_parameters, resolve_models, raise_on_resolve_exc)
 
     @initialize_models_after
     async def register_models(self, models: List[Union[Type[NodeModel], Type[RelationshipModel]]]) -> Self:
@@ -385,13 +364,13 @@ class Pyneo4jClient(ABC):
         return self
 
     @asynccontextmanager
-    @ensure_initialized
     async def with_batching(self) -> AsyncGenerator[None, Any]:
         """
         Batches all queries called inside this context manager into a single transaction. Inside
         the context, both client queries and model methods can be called.
         """
         try:
+            self._using_batches = True
             self._logger.info("Starting batch transaction")
             await self._begin_transaction()
 
@@ -402,6 +381,9 @@ class Pyneo4jClient(ABC):
         except Exception as exc:
             self._logger.error(exc)
             await self._rollback_transaction()
+            raise exc
+        finally:
+            self._using_batches = False
 
     @ensure_initialized
     async def drop_nodes(self) -> Self:
@@ -473,6 +455,128 @@ class Pyneo4jClient(ABC):
         self._session = None
         self._logger.debug("Session closed")
 
+    async def _with_implicit_transaction(
+        self,
+        query: Union[str, LiteralString, Query],
+        parameters: Dict[str, Any],
+        resolve_models: bool,
+        raise_on_resolve_exc: bool,
+    ) -> Tuple[List[List[Any]], List[str]]:
+        """
+        Runs a query with manually handled transactions, allowing for batching and finer control over
+        committing/rollbacks.
+
+        Args:
+            query (Union[str, LiteralString, Query]): Neo4j Query class or query string. Same as queries
+                for the Neo4j driver.
+            parameters (Optional[Dict[str, Any]]): Optional parameters used by the query. Same as parameters
+                for the Neo4j driver. Defaults to `None`.
+            resolve_models (bool): Whether to attempt to resolve the nodes/relationships returned by the query
+                to their corresponding models. Models must be registered for this to work. Defaults to `False`.
+            raise_on_resolve_exc (bool): Whether to silently fail or raise a `ModelResolveError` error if resolving
+                a node/relationship fails. Defaults to `False`.
+
+        Raises:
+            ModelResolveError: `raise_on_resolve_exc` is set to `True` and resolving a result fails.
+
+        Returns:
+            Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
+                variables.
+        """
+        if not self._using_batches:
+            # If we are currently using batching, we should already be inside a active session/transaction
+            await self._begin_transaction()
+
+        try:
+            self._logger.info("%s with parameters %s", query, parameters)
+            query_result = await cast(AsyncTransaction, self._transaction).run(cast(LiteralString, query), parameters)
+
+            self._logger.debug("Parsing query results")
+            results = [list(result.values()) async for result in query_result]
+            keys = list(query_result.keys())
+
+            if resolve_models:
+                try:
+                    # TODO: Try to resolve models and raise an exception depending on the parameters provided
+                    pass
+                except Exception as exc:
+                    self._logger.warning("Resolving models failed with %s", exc)
+                    if raise_on_resolve_exc:
+                        raise ModelResolveError() from exc
+
+            if not self._using_batches:
+                # Again, don't commit anything to the database when batching is enabled
+                await self._commit_transaction()
+
+            return results, keys
+        except Exception as exc:
+            self._logger.error("Query exception: %s", exc)
+
+            if not self._using_batches:
+                # Same as in the beginning, we don't want to roll back anything if we use batching
+                await self._rollback_transaction()
+
+            raise exc
+
+    async def _with_auto_committing_transaction(
+        self,
+        query: Union[str, LiteralString, Query],
+        parameters: Dict[str, Any],
+        resolve_models: bool,
+        raise_on_resolve_exc: bool,
+    ) -> Tuple[List[List[Any]], List[str]]:
+        """
+        Runs a auto-committing query using a session rather than a transaction. This has to be used
+        with some Memgraph queries due to some restrictions, though this mainly concerns queries
+        with info reporting (`SHOW INDEX INFO` for example).
+
+        Args:
+            query (Union[str, LiteralString, Query]): Neo4j Query class or query string. Same as queries
+                for the Neo4j driver.
+            parameters (Optional[Dict[str, Any]]): Optional parameters used by the query. Same as parameters
+                for the Neo4j driver. Defaults to `None`.
+            resolve_models (bool): Whether to attempt to resolve the nodes/relationships returned by the query
+                to their corresponding models. Models must be registered for this to work. Defaults to `False`.
+            raise_on_resolve_exc (bool): Whether to silently fail or raise a `ModelResolveError` error if resolving
+                a node/relationship fails. Defaults to `False`.
+
+        Raises:
+            ModelResolveError: `raise_on_resolve_exc` is set to `True` and resolving a result fails.
+
+        Returns:
+            Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
+                variables.
+        """
+        try:
+            self._logger.debug("Acquiring new session")
+            session = cast(AsyncDriver, self._driver).session()
+            self._logger.debug("Session %s acquired", session)
+
+            self._logger.info("%s with parameters %s", query, parameters)
+            query_result = await session.run(cast(LiteralString, query), parameters)
+
+            self._logger.debug("Parsing query results")
+            results = [list(result.values()) async for result in query_result]
+            keys = list(query_result.keys())
+
+            if resolve_models:
+                try:
+                    # TODO: Try to resolve models and raise an exception depending on the parameters provided
+                    pass
+                except Exception as exc:
+                    self._logger.warning("Resolving models failed with %s", exc)
+                    if raise_on_resolve_exc:
+                        raise ModelResolveError() from exc
+
+            self._logger.debug("Closing session %s", session)
+            await session.close()
+            self._logger.debug("Session closed")
+
+            return results, keys
+        except Exception as exc:
+            self._logger.error("Query exception: %s", exc)
+            raise exc
+
 
 class Neo4jClient(Pyneo4jClient):
     """
@@ -486,27 +590,27 @@ class Neo4jClient(Pyneo4jClient):
     @ensure_initialized
     async def drop_constraints(self) -> Self:
         self._logger.debug("Discovering constraints")
-        results, _ = await self.cypher("SHOW CONSTRAINTS")
+        constraints, _ = await self.cypher("SHOW CONSTRAINTS")
 
         self._logger.warning("Dropping all constraints")
-        for constraint in results:
+        for constraint in constraints:
             self._logger.debug("Dropping constraint %s", constraint[1])
             await self.cypher(f"DROP CONSTRAINT {constraint[1]}")
 
-        self._logger.debug("Dropped %s constraints", len(results))
+        self._logger.debug("Dropped %s constraints", len(constraints))
         return self
 
     @ensure_initialized
     async def drop_indexes(self) -> Self:
         self._logger.debug("Discovering indexes")
-        results, _ = await self.cypher("SHOW INDEXES")
+        indexes, _ = await self.cypher("SHOW INDEXES")
 
         self._logger.warning("Dropping all indexes")
-        for index in results:
+        for index in indexes:
             self._logger.debug("Dropping index %s", index[1])
             await self.cypher(f"DROP INDEX {index[1]}")
 
-        self._logger.debug("Dropped %s indexes", len(results))
+        self._logger.debug("Dropped %s indexes", len(indexes))
         return self
 
     @ensure_initialized
@@ -525,8 +629,41 @@ class Neo4jClient(Pyneo4jClient):
 
 
 class MemgraphClient(Pyneo4jClient):
+    """
+    Memgraph client used for interacting with a Memgraph database. Provides basic functionality for querying, indexing,
+    constraints and other utilities.
+    """
+
     def __str__(self) -> str:
         return f"(Memgraph){hex(id(self))}"
+
+    async def drop_constraints(self) -> Self:
+        return await super().drop_constraints()
+
+    async def drop_indexes(self) -> Self:
+        self._logger.debug("Discovering indexes")
+        indexes, _ = await self.cypher("SHOW INDEX INFO", auto_committing=True)
+
+        for index in indexes:
+            match index[0]:
+                case MemgraphIndexType.EDGE_TYPE.value:
+                    await self.cypher(f"DROP EDGE INDEX ON :{index[1]}", auto_committing=True)
+                case MemgraphIndexType.EDGE_TYPE_AND_PROPERTY.value:
+                    await self.cypher(f"DROP EDGE INDEX ON :{index[1]}({index[2]})", auto_committing=True)
+                case MemgraphIndexType.LABEL.value:
+                    await self.cypher(f"DROP INDEX ON :{index[1]}", auto_committing=True)
+                case MemgraphIndexType.LABEL_AND_PROPERTY.value:
+                    await self.cypher(f"DROP INDEX ON :{index[1]}({index[2]})", auto_committing=True)
+                case MemgraphIndexType.POINT.value:
+                    await self.cypher(f"DROP POINT INDEX ON :{index[1]}({index[2]})", auto_committing=True)
+
+        return self
+
+    @ensure_initialized
+    async def _check_database_version(self) -> None:
+        # I'm not sure if we actually need/can to check anything here since the server info
+        # only states 'Neo4j/v5.11.0 compatible graph database server - Memgraph'
+        pass
 
     @ensure_initialized
     async def _initialize_models(self) -> None:
