@@ -22,6 +22,8 @@ services:
       - memgraph:/var/lib
     environment:
       - MEMGRAPH="--storage-properties-on-edges=true --log-level=TRACE"
+      - MEMGRAPH_USER=memgraph
+      - MEMGRAPH_PASSWORD=password
 
   lab:
     image: memgraph/lab:latest
