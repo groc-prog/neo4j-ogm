@@ -15,7 +15,7 @@ class ConnectionString(Enum):
 
 class Authentication(Enum):
     NEO4J = ("neo4j", "password")
-    MEMGRAPH = ()
+    MEMGRAPH = ("memgraph", "password")
 
 
 @pytest.fixture

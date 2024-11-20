@@ -25,7 +25,11 @@
   },
   "cSpell.words": [
     "cypher",
+    "levelname",
+    "LOCALDATETIME",
     "memgraph",
-    "Pyneo"
+    "multicommand",
+    "Pyneo",
+    "ZONEDDATETIME"
   ]
 }
