@@ -9,7 +9,6 @@ import os
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import wraps
-from logging import Logger
 from typing import (
     Any,
     AsyncGenerator,
@@ -38,7 +37,11 @@ from pyneo4j_ogm.exceptions import (
     UnsupportedDatabaseVersionError,
 )
 from pyneo4j_ogm.logger import logger
-from pyneo4j_ogm.types.memgraph import MemgraphIndexType
+from pyneo4j_ogm.types.memgraph import (
+    MemgraphConstraintType,
+    MemgraphDataTypeMapping,
+    MemgraphIndexType,
+)
 
 
 def initialize_models_after(func):
@@ -118,13 +121,11 @@ class Pyneo4jClient(ABC):
     _skip_constraint_creation: bool
     _skip_index_creation: bool
     _using_batches: bool
-    _logger: Logger
 
     def __init__(self) -> None:
         super().__init__()
 
-        self._logger = logger.getChild(str(self))
-        self._logger.debug("Initializing client")
+        logger.debug("Initializing client")
 
         self._driver = None
         self._session = None
@@ -179,16 +180,16 @@ class Pyneo4jClient(ABC):
             bool: `True` if the client is connected and ready, otherwise `False`.
         """
         try:
-            self._logger.info("Checking client connection and authentication")
+            logger.info("Checking client connection and authentication")
             if self._driver is None:
-                self._logger.debug("Client not initialized yet")
+                logger.debug("Client not initialized yet")
                 return False
 
-            self._logger.debug("Verifying connectivity to database")
+            logger.debug("Verifying connectivity to database")
             await self._driver.verify_connectivity()
             return True
         except Exception as exc:
-            self._logger.error(exc)
+            logger.error(exc)
             return False
 
     @initialize_models_after
@@ -217,16 +218,16 @@ class Pyneo4jClient(ABC):
         self._skip_constraint_creation = skip_constraints
         self._skip_index_creation = skip_indexes
 
-        self._logger.info("Connecting to database %s with %s", uri, self)
+        logger.info("Connecting to database %s", uri)
         self._driver = AsyncGraphDatabase.driver(uri=uri, *args, **kwargs)
 
-        self._logger.debug("Checking connectivity and authentication")
+        logger.debug("Checking connectivity and authentication")
         await self._driver.verify_connectivity()
 
-        self._logger.debug("Checking for compatible database version")
+        logger.debug("Checking for compatible database version")
         await self._check_database_version()
 
-        self._logger.info("%s connected to database %s", uri, self)
+        logger.info("%s connected to database", uri)
         return self
 
     @ensure_initialized
@@ -234,10 +235,10 @@ class Pyneo4jClient(ABC):
         """
         Closes the connection to the database.
         """
-        self._logger.info("Closing database connection for %s", self)
+        logger.info("Closing database connection")
         await cast(AsyncDriver, self._driver).close()
         self._driver = None
-        self._logger.info("Connection to database for %s closed", self)
+        logger.info("Connection to database closed")
 
     @ensure_initialized
     async def cypher(
@@ -301,18 +302,18 @@ class Pyneo4jClient(ABC):
         Returns:
             Self: The client instance, which allows for chained calls.
         """
-        self._logger.debug("Registering models with client %s", self)
+        logger.debug("Registering models with client")
         original_count = len(self._models)
 
         for model in models:
             if not issubclass(model, (NodeModel, RelationshipModel)):
                 continue
 
-            self._logger.debug("Registering model %s", model.__class__.__name__)
+            logger.debug("Registering model %s", model.__class__.__name__)
             self._models.add(model)
 
         current_count = len(self._models) - original_count
-        self._logger.info("Registered %s models", current_count)
+        logger.info("Registered %d models", current_count)
 
         return self
 
@@ -328,18 +329,18 @@ class Pyneo4jClient(ABC):
         Returns:
             Self: The client instance, which allows for chained calls.
         """
-        self._logger.debug("Registering models in directory %s", path)
+        logger.debug("Registering models in directory %s", path)
         original_count = len(self._models)
 
         for root, _, files in os.walk(path):
-            self._logger.debug("Checking %s files for models", len(files))
+            logger.debug("Checking %d files for models", len(files))
             for file in files:
                 if not file.endswith(".py"):
                     continue
 
                 filepath = os.path.join(root, file)
 
-                self._logger.debug("Found file %s, importing", filepath)
+                logger.debug("Found file %s, importing", filepath)
                 module_name = os.path.splitext(os.path.basename(filepath))[0]
                 spec = importlib.util.spec_from_file_location(module_name, filepath)
 
@@ -359,7 +360,7 @@ class Pyneo4jClient(ABC):
                     self._models.add(member[1])
 
         current_count = len(self._models) - original_count
-        self._logger.info("Registered %s models", current_count)
+        logger.info("Registered %d models", current_count)
 
         return self
 
@@ -371,15 +372,15 @@ class Pyneo4jClient(ABC):
         """
         try:
             self._using_batches = True
-            self._logger.info("Starting batch transaction")
+            logger.info("Starting batch transaction")
             await self._begin_transaction()
 
             yield None
 
-            self._logger.info("Batching transaction finished")
+            logger.info("Batching transaction finished")
             await self._commit_transaction()
         except Exception as exc:
-            self._logger.error(exc)
+            logger.error(exc)
             await self._rollback_transaction()
             raise exc
         finally:
@@ -390,10 +391,10 @@ class Pyneo4jClient(ABC):
         """
         Deletes all nodes and relationships.
         """
-        self._logger.warning("Dropping all nodes and relationships")
+        logger.warning("Dropping all nodes and relationships")
         await self.cypher("MATCH (n) DETACH DELETE n")
 
-        self._logger.info("All nodes and relationships deleted")
+        logger.info("All nodes and relationships deleted")
         return self
 
     @ensure_initialized
@@ -407,13 +408,13 @@ class Pyneo4jClient(ABC):
         if self._session is not None or self._transaction is not None:
             raise TransactionInProgress()
 
-        self._logger.debug("Acquiring new session")
+        logger.debug("Acquiring new session")
         self._session = cast(AsyncDriver, self._driver).session()
-        self._logger.debug("Session %s acquired", self._session)
+        logger.debug("Session %s acquired", self._session)
 
-        self._logger.debug("Starting new transaction for session %s", self._session)
+        logger.debug("Starting new transaction for session %s", self._session)
         self._transaction = await self._session.begin_transaction()
-        self._logger.debug("Transaction %s for session %s acquired", self._transaction, self._session)
+        logger.debug("Transaction %s for session %s acquired", self._transaction, self._session)
 
     @ensure_initialized
     async def _commit_transaction(self) -> None:
@@ -426,14 +427,14 @@ class Pyneo4jClient(ABC):
         if self._session is None or self._transaction is None:
             raise NoTransactionInProgress()
 
-        self._logger.debug("Committing transaction %s and closing session %s", self._transaction, self._session)
+        logger.debug("Committing transaction %s and closing session %s", self._transaction, self._session)
         await self._transaction.commit()
         self._transaction = None
-        self._logger.debug("Transaction committed")
+        logger.debug("Transaction committed")
 
         await self._session.close()
         self._session = None
-        self._logger.debug("Session closed")
+        logger.debug("Session closed")
 
     @ensure_initialized
     async def _rollback_transaction(self) -> None:
@@ -446,14 +447,14 @@ class Pyneo4jClient(ABC):
         if self._session is None or self._transaction is None:
             raise NoTransactionInProgress()
 
-        self._logger.debug("Rolling back transaction %s and closing session %s", self._transaction, self._session)
+        logger.debug("Rolling back transaction %s and closing session %s", self._transaction, self._session)
         await self._transaction.rollback()
         self._transaction = None
-        self._logger.debug("Transaction rolled back")
+        logger.debug("Transaction rolled back")
 
         await self._session.close()
         self._session = None
-        self._logger.debug("Session closed")
+        logger.debug("Session closed")
 
     async def _with_implicit_transaction(
         self,
@@ -488,10 +489,10 @@ class Pyneo4jClient(ABC):
             await self._begin_transaction()
 
         try:
-            self._logger.info("%s with parameters %s", query, parameters)
+            logger.info("%s with parameters %s", query, parameters)
             query_result = await cast(AsyncTransaction, self._transaction).run(cast(LiteralString, query), parameters)
 
-            self._logger.debug("Parsing query results")
+            logger.debug("Parsing query results")
             results = [list(result.values()) async for result in query_result]
             keys = list(query_result.keys())
 
@@ -500,7 +501,7 @@ class Pyneo4jClient(ABC):
                     # TODO: Try to resolve models and raise an exception depending on the parameters provided
                     pass
                 except Exception as exc:
-                    self._logger.warning("Resolving models failed with %s", exc)
+                    logger.warning("Resolving models failed with %s", exc)
                     if raise_on_resolve_exc:
                         raise ModelResolveError() from exc
 
@@ -510,7 +511,7 @@ class Pyneo4jClient(ABC):
 
             return results, keys
         except Exception as exc:
-            self._logger.error("Query exception: %s", exc)
+            logger.error("Query exception: %s", exc)
 
             if not self._using_batches:
                 # Same as in the beginning, we don't want to roll back anything if we use batching
@@ -548,14 +549,14 @@ class Pyneo4jClient(ABC):
                 variables.
         """
         try:
-            self._logger.debug("Acquiring new session")
+            logger.debug("Acquiring new session")
             session = cast(AsyncDriver, self._driver).session()
-            self._logger.debug("Session %s acquired", session)
+            logger.debug("Session %s acquired", session)
 
-            self._logger.info("%s with parameters %s", query, parameters)
+            logger.info("%s with parameters %s", query, parameters)
             query_result = await session.run(cast(LiteralString, query), parameters)
 
-            self._logger.debug("Parsing query results")
+            logger.debug("Parsing query results")
             results = [list(result.values()) async for result in query_result]
             keys = list(query_result.keys())
 
@@ -564,17 +565,17 @@ class Pyneo4jClient(ABC):
                     # TODO: Try to resolve models and raise an exception depending on the parameters provided
                     pass
                 except Exception as exc:
-                    self._logger.warning("Resolving models failed with %s", exc)
+                    logger.warning("Resolving models failed with %s", exc)
                     if raise_on_resolve_exc:
                         raise ModelResolveError() from exc
 
-            self._logger.debug("Closing session %s", session)
+            logger.debug("Closing session %s", session)
             await session.close()
-            self._logger.debug("Session closed")
+            logger.debug("Session closed")
 
             return results, keys
         except Exception as exc:
-            self._logger.error("Query exception: %s", exc)
+            logger.error("Query exception: %s", exc)
             raise exc
 
 
@@ -584,38 +585,37 @@ class Neo4jClient(Pyneo4jClient):
     constraints and other utilities.
     """
 
-    def __str__(self) -> str:
-        return f"(Neo4j){hex(id(self))}"
-
     @ensure_initialized
     async def drop_constraints(self) -> Self:
-        self._logger.debug("Discovering constraints")
+        logger.debug("Discovering constraints")
         constraints, _ = await self.cypher("SHOW CONSTRAINTS")
 
-        self._logger.warning("Dropping all constraints")
+        logger.warning("Dropping %d constraints", len(constraints))
         for constraint in constraints:
-            self._logger.debug("Dropping constraint %s", constraint[1])
+            logger.debug("Dropping constraint %s", constraint[1])
             await self.cypher(f"DROP CONSTRAINT {constraint[1]}")
 
-        self._logger.debug("Dropped %s constraints", len(constraints))
+        logger.debug("Dropped %d constraints", len(constraints))
         return self
 
     @ensure_initialized
     async def drop_indexes(self) -> Self:
-        self._logger.debug("Discovering indexes")
+        logger.debug("Discovering indexes")
         indexes, _ = await self.cypher("SHOW INDEXES")
 
-        self._logger.warning("Dropping all indexes")
+        if len(indexes) > 0:
+            logger.warning("Dropping %d indexes", len(indexes))
+
         for index in indexes:
-            self._logger.debug("Dropping index %s", index[1])
+            logger.debug("Dropping index %s", index[1])
             await self.cypher(f"DROP INDEX {index[1]}")
 
-        self._logger.debug("Dropped %s indexes", len(indexes))
+        logger.debug("Dropped %d indexes", len(indexes))
         return self
 
     @ensure_initialized
     async def _check_database_version(self) -> None:
-        self._logger.debug("Checking if Neo4j version is supported")
+        logger.debug("Checking if Neo4j version is supported")
         server_info = await cast(AsyncDriver, self._driver).get_server_info()
 
         version = server_info.agent.split("/")[1]
@@ -634,15 +634,42 @@ class MemgraphClient(Pyneo4jClient):
     constraints and other utilities.
     """
 
-    def __str__(self) -> str:
-        return f"(Memgraph){hex(id(self))}"
-
     async def drop_constraints(self) -> Self:
-        return await super().drop_constraints()
+        logger.debug("Discovering constraints")
+        constraints, _ = await self.cypher("SHOW CONSTRAINT INFO", auto_committing=True)
+
+        if len(constraints) > 0:
+            logger.warning("Dropping %d constraints", len(constraints))
+
+        for constraint in constraints:
+            match constraint[0]:
+                case MemgraphConstraintType.EXISTS.value:
+                    await self.cypher(
+                        f"DROP CONSTRAINT ON (n:{constraint[1]}) ASSERT EXISTS (n.{constraint[2]})",
+                        auto_committing=True,
+                    )
+                case MemgraphConstraintType.UNIQUE.value:
+                    await self.cypher(
+                        f"DROP CONSTRAINT ON (n:{constraint[1]}) ASSERT {', '.join([f'n.{constraint_property}' for constraint_property in constraint[2]])} IS UNIQUE",
+                        auto_committing=True,
+                    )
+                case MemgraphConstraintType.DATA_TYPE.value:
+                    # Some data types in Memgraph are returned differently that what is used when creating them
+                    # Because of that we have to do some additional mapping when dropping them
+                    await self.cypher(
+                        f"DROP CONSTRAINT ON (n:{constraint[1]}) ASSERT n.{constraint[2]} IS TYPED {MemgraphDataTypeMapping[constraint[3]]}",
+                        auto_committing=True,
+                    )
+
+        logger.info("%d constraints dropped", len(constraints))
+        return self
 
     async def drop_indexes(self) -> Self:
-        self._logger.debug("Discovering indexes")
+        logger.debug("Discovering indexes")
         indexes, _ = await self.cypher("SHOW INDEX INFO", auto_committing=True)
+
+        if len(indexes) > 0:
+            logger.warning("Dropping %d indexes", len(indexes))
 
         for index in indexes:
             match index[0]:
@@ -657,6 +684,7 @@ class MemgraphClient(Pyneo4jClient):
                 case MemgraphIndexType.POINT.value:
                     await self.cypher(f"DROP POINT INDEX ON :{index[1]}({index[2]})", auto_committing=True)
 
+        logger.info("%d indexes dropped", len(indexes))
         return self
 
     @ensure_initialized

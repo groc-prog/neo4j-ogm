@@ -145,7 +145,7 @@ ignored-classes=optparse.Values,thread._local,_thread._local
 
 
 [FORMAT]
-max-line-length=120
+max-line-length=180
 ignore-long-lines=(?x)(
   ^\s*(\#\ )?<?https?://\S+>?$|
   ^\s*(from\s+\S+\s+)?import\s+.+$)
