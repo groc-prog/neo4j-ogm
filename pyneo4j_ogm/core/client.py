@@ -37,8 +37,11 @@ from pyneo4j_ogm.exceptions import (
     UnsupportedDatabaseVersionError,
 )
 from pyneo4j_ogm.logger import logger
+from pyneo4j_ogm.queries.query_builder import QueryBuilder
+from pyneo4j_ogm.types.graph import EntityType
 from pyneo4j_ogm.types.memgraph import (
     MemgraphConstraintType,
+    MemgraphDataType,
     MemgraphDataTypeMapping,
     MemgraphIndexType,
 )
@@ -213,7 +216,7 @@ class Pyneo4jClient(ABC):
                 `False`.
 
         Returns:
-            Self: The client instance, which allows for chained calls.
+            Self: The client.
         """
         self._skip_constraint_creation = skip_constraints
         self._skip_index_creation = skip_indexes
@@ -300,7 +303,7 @@ class Pyneo4jClient(ABC):
                 instances will be skipped during the registration.
 
         Returns:
-            Self: The client instance, which allows for chained calls.
+            Self: The client.
         """
         logger.debug("Registering models with client")
         original_count = len(self._models)
@@ -327,7 +330,7 @@ class Pyneo4jClient(ABC):
             path (str): The path to the directory.
 
         Returns:
-            Self: The client instance, which allows for chained calls.
+            Self: The client.
         """
         logger.debug("Registering models in directory %s", path)
         original_count = len(self._models)
@@ -392,7 +395,7 @@ class Pyneo4jClient(ABC):
         Deletes all nodes and relationships.
         """
         logger.warning("Dropping all nodes and relationships")
-        await self.cypher("MATCH (n) DETACH DELETE n")
+        await self.cypher(f"MATCH {QueryBuilder.node_pattern("n")} DETACH DELETE n")
 
         logger.info("All nodes and relationships deleted")
         return self
@@ -595,7 +598,7 @@ class Neo4jClient(Pyneo4jClient):
             logger.debug("Dropping constraint %s", constraint[1])
             await self.cypher(f"DROP CONSTRAINT {constraint[1]}")
 
-        logger.debug("Dropped %d constraints", len(constraints))
+        logger.info("%d constraints dropped", len(constraints))
         return self
 
     @ensure_initialized
@@ -610,7 +613,55 @@ class Neo4jClient(Pyneo4jClient):
             logger.debug("Dropping index %s", index[1])
             await self.cypher(f"DROP INDEX {index[1]}")
 
-        logger.debug("Dropped %d indexes", len(indexes))
+        logger.info("%d indexes dropped", len(indexes))
+        return self
+
+    @ensure_initialized
+    async def uniqueness_constraint(
+        self,
+        name: str,
+        entity_type: EntityType,
+        label_or_type: str,
+        properties: Union[List[str], str],
+        raise_on_existing: bool = False,
+    ) -> Self:
+        """
+        Creates a uniqueness constraint for a given node or relationship. By default, this will use `IF NOT EXISTS`
+        when creating constraints to prevent errors if the constraint already exists. This behavior can be changed by
+        passing `raise_on_existing` as `True`.
+
+        Args:
+            name (str): The name of the constraint.
+            entity_type (EntityType): The type of graph entity for which the constraint will be created.
+            label_or_type (str): When creating a constraint for a node, the label on which the constraint will be created.
+                In case of a relationship, the relationship type.
+            properties (Union[List[str], str]): The properties which should be affected by the constraint.
+            raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate constraints.
+                Defaults to `False`.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating uniqueness constraint %s on %s", name, label_or_type)
+        normalized_properties = [properties] if isinstance(properties, str) else properties
+
+        existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
+
+        if entity_type == EntityType.NODE:
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+        else:
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+
+        if len(normalized_properties) == 1:
+            properties_pattern = f"e.{normalized_properties[0]}"
+        else:
+            properties_pattern = f"({', '.join([f'e.{property_}' for property_ in normalized_properties])})"
+
+        logger.debug("Creating uniqueness constraint for %s on properties %s", label_or_type, properties_pattern)
+        await self.cypher(
+            f"CREATE CONSTRAINT {name}{existence_pattern} FOR {entity_pattern} REQUIRE {properties_pattern} IS UNIQUE"
+        )
+
         return self
 
     @ensure_initialized
@@ -685,6 +736,90 @@ class MemgraphClient(Pyneo4jClient):
                     await self.cypher(f"DROP POINT INDEX ON :{index[1]}({index[2]})", auto_committing=True)
 
         logger.info("%d indexes dropped", len(indexes))
+        return self
+
+    @ensure_initialized
+    async def existence_constraint(self, label: str, properties: Union[List[str], str]) -> Self:
+        """
+        Creates a new existence constraint for a node with a given label. Can only be used to create existence constraints
+        on nodes.
+
+        Args:
+            label (str): The label on which the constraint will be created.
+            properties (Union[List[str], str]): The properties which should be affected by the constraint.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating existence constraint on %s", label)
+        normalized_properties = [properties] if isinstance(properties, str) else properties
+        node_pattern = QueryBuilder.node_pattern("n", label)
+
+        for property_ in normalized_properties:
+            logger.debug("Creating existence constraint for %s on property %s", label, property_)
+            await self.cypher(
+                f"CREATE CONSTRAINT ON {node_pattern} ASSERT EXISTS (n.{property_})", auto_committing=True
+            )
+
+        return self
+
+    @ensure_initialized
+    async def uniqueness_constraint(self, label: str, properties: Union[List[str], str]) -> Self:
+        """
+        Creates a new uniqueness constraint for a node with a given label. Can only be used to create uniqueness constraints
+        on nodes.
+
+        Args:
+            label (str): The label on which the constraint will be created.
+            properties (Union[List[str], str]): The properties which should be affected by the constraint.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating uniqueness constraint on %s", label)
+        normalized_properties = [properties] if isinstance(properties, str) else properties
+
+        node_pattern = QueryBuilder.node_pattern("n", label)
+        property_pattern = ", ".join(f"n.{property_}" for property_ in normalized_properties)
+
+        logger.debug("Creating uniqueness constraint for %s on properties %s", label, property_pattern)
+        await self.cypher(
+            f"CREATE CONSTRAINT ON {node_pattern} ASSERT {property_pattern} IS UNIQUE", auto_committing=True
+        )
+
+        return self
+
+    @ensure_initialized
+    async def data_type_constraint(
+        self, label: str, properties: Union[List[str], str], data_type: MemgraphDataType
+    ) -> Self:
+        """
+        Creates a new data type constraint for a node with a given label. Can only be used to create data type constraints
+        on nodes.
+
+        Args:
+            label (str): The label on which the constraint will be created.
+            properties (Union[List[str], str]): The properties which should be affected by the constraint.
+            data_type (MemgraphDataType): The data type to enforce.
+
+        Raises:
+            ClientError: If a data type constraint already exists on the label-property pair.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating data type constraint on %s for type %s", label, data_type.value)
+        normalized_properties = [properties] if isinstance(properties, str) else properties
+
+        node_pattern = QueryBuilder.node_pattern("n", label)
+
+        for property_ in normalized_properties:
+            logger.debug("Creating data type constraint for %s on property %s", label, property_)
+            await self.cypher(
+                f"CREATE CONSTRAINT ON {node_pattern} ASSERT n.{property_} IS TYPED {data_type.value}",
+                auto_committing=True,
+            )
+
         return self
 
     @ensure_initialized
