@@ -593,6 +593,9 @@ class Neo4jClient(Pyneo4jClient):
         logger.debug("Discovering constraints")
         constraints, _ = await self.cypher("SHOW CONSTRAINTS")
 
+        if len(constraints) == 0:
+            return self
+
         logger.warning("Dropping %d constraints", len(constraints))
         for constraint in constraints:
             logger.debug("Dropping constraint %s", constraint[1])
@@ -606,9 +609,10 @@ class Neo4jClient(Pyneo4jClient):
         logger.debug("Discovering indexes")
         indexes, _ = await self.cypher("SHOW INDEXES")
 
-        if len(indexes) > 0:
-            logger.warning("Dropping %d indexes", len(indexes))
+        if len(indexes) == 0:
+            return self
 
+        logger.warning("Dropping %d indexes", len(indexes))
         for index in indexes:
             logger.debug("Dropping index %s", index[1])
             await self.cypher(f"DROP INDEX {index[1]}")
@@ -665,6 +669,125 @@ class Neo4jClient(Pyneo4jClient):
         return self
 
     @ensure_initialized
+    async def range_index(
+        self,
+        name: str,
+        label_or_type: str,
+        entity_type: EntityType,
+        properties: Union[List[str], str],
+        raise_on_existing: bool = False,
+    ) -> Self:
+        """
+        Creates a range index for the given node or relationship. By default, this will se `IF NOT EXISTS`
+        when creating indexes to prevent errors if the index already exists. This behavior can be
+        changed by passing `raise_on_existing` as `True`.
+
+        Args:
+            name (str): The name of the index.
+            entity_type (EntityType): The type of graph entity for which the index will be created.
+            label_or_type (str): When creating a index for a node, the label on which the index will be created.
+                In case of a relationship, the relationship type.
+            properties (Union[List[str], str]): The properties which should be affected by the index.
+            raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
+                Defaults to `False`.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating range index %s for %s", name, label_or_type)
+        normalized_properties = [properties] if isinstance(properties, str) else properties
+
+        existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
+        properties_pattern = ", ".join(f"e.{property_}" for property_ in normalized_properties)
+
+        if entity_type == EntityType.NODE:
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+        else:
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+
+        logger.debug("Creating range index for %s on properties %s", label_or_type, properties_pattern)
+        await self.cypher(f"CREATE INDEX {name}{existence_pattern} FOR {entity_pattern} ON ({properties_pattern})")
+
+        return self
+
+    @ensure_initialized
+    async def text_index(
+        self,
+        name: str,
+        label_or_type: str,
+        entity_type: EntityType,
+        property_: str,
+        raise_on_existing: bool = False,
+    ) -> Self:
+        """
+        Creates a text index for the given node or relationship. By default, this will se `IF NOT EXISTS`
+        when creating indexes to prevent errors if the index already exists. This behavior can be
+        changed by passing `raise_on_existing` as `True`.
+
+        Args:
+            name (str): The name of the index.
+            entity_type (EntityType): The type of graph entity for which the index will be created.
+            label_or_type (str): When creating a index for a node, the label on which the index will be created.
+                In case of a relationship, the relationship type.
+            property_ (str): The property which should be affected by the index.
+            raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
+                Defaults to `False`.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating text index %s for %s", name, label_or_type)
+        existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
+
+        if entity_type == EntityType.NODE:
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+        else:
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+
+        logger.debug("Creating text index for %s on property %s", label_or_type, property_)
+        await self.cypher(f"CREATE TEXT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
+        return self
+
+    @ensure_initialized
+    async def point_index(
+        self,
+        name: str,
+        label_or_type: str,
+        entity_type: EntityType,
+        property_: str,
+        raise_on_existing: bool = False,
+    ) -> Self:
+        """
+        Creates a point index for the given node or relationship. By default, this will se `IF NOT EXISTS`
+        when creating indexes to prevent errors if the index already exists. This behavior can be
+        changed by passing `raise_on_existing` as `True`.
+
+        Args:
+            name (str): The name of the index.
+            entity_type (EntityType): The type of graph entity for which the index will be created.
+            label_or_type (str): When creating a index for a node, the label on which the index will be created.
+                In case of a relationship, the relationship type.
+            property_ (str): The property which should be affected by the index.
+            raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
+                Defaults to `False`.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating point index %s for %s", name, label_or_type)
+        existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
+
+        if entity_type == EntityType.NODE:
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+        else:
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+
+        logger.debug("Creating point index for %s on property %s", label_or_type, property_)
+        await self.cypher(f"CREATE POINT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
+
+        return self
+
+    @ensure_initialized
     async def _check_database_version(self) -> None:
         logger.debug("Checking if Neo4j version is supported")
         server_info = await cast(AsyncDriver, self._driver).get_server_info()
@@ -689,9 +812,10 @@ class MemgraphClient(Pyneo4jClient):
         logger.debug("Discovering constraints")
         constraints, _ = await self.cypher("SHOW CONSTRAINT INFO", auto_committing=True)
 
-        if len(constraints) > 0:
-            logger.warning("Dropping %d constraints", len(constraints))
+        if len(constraints) == 0:
+            return self
 
+        logger.warning("Dropping %d constraints", len(constraints))
         for constraint in constraints:
             match constraint[0]:
                 case MemgraphConstraintType.EXISTS.value:
@@ -719,9 +843,10 @@ class MemgraphClient(Pyneo4jClient):
         logger.debug("Discovering indexes")
         indexes, _ = await self.cypher("SHOW INDEX INFO", auto_committing=True)
 
-        if len(indexes) > 0:
-            logger.warning("Dropping %d indexes", len(indexes))
+        if len(indexes) == 0:
+            return self
 
+        logger.warning("Dropping %d indexes", len(indexes))
         for index in indexes:
             match index[0]:
                 case MemgraphIndexType.EDGE_TYPE.value:
@@ -786,6 +911,73 @@ class MemgraphClient(Pyneo4jClient):
         await self.cypher(
             f"CREATE CONSTRAINT ON {node_pattern} ASSERT {property_pattern} IS UNIQUE", auto_committing=True
         )
+
+        return self
+
+    @ensure_initialized
+    async def index(self, label_or_edge: str, entity_type: EntityType) -> Self:
+        """
+        Creates a label/edge index.
+
+        Args:
+            label_or_edge (str): Label/edge in which the index is created.
+            entity_type (EntityType): The type of graph entity for which the index will be created.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating %s index for %s", "label" if entity_type == EntityType.NODE else "edge", label_or_edge)
+        await self.cypher(
+            f"CREATE {'EDGE ' if entity_type == EntityType.RELATIONSHIP else ''} INDEX ON :{label_or_edge}",
+            auto_committing=True,
+        )
+
+        return self
+
+    @ensure_initialized
+    async def property_index(self, label_or_edge: str, entity_type: EntityType, property_: str) -> Self:
+        """
+        Creates a label/property or edge/property pair index.
+
+        Args:
+            label_or_edge (str): Label/edge in which the index is created.
+            entity_type (EntityType): The type of graph entity for which the index will be created.
+            property_ (str): The property which should be affected by the index.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info(
+            "Creating %s pair index for %s on %s",
+            "label" if entity_type == EntityType.NODE else "edge",
+            label_or_edge,
+            property_,
+        )
+        await self.cypher(
+            f"CREATE {'EDGE ' if entity_type == EntityType.RELATIONSHIP else ''} INDEX ON :{label_or_edge}({property_})",
+            auto_committing=True,
+        )
+
+        return self
+
+    @ensure_initialized
+    async def point_index(self, label: str, property_: str) -> Self:
+        """
+        Creates a point index.
+
+        Args:
+            label (str): Label/edge in which the index is created.
+            property_ (str): The property which should be affected by the index.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info(
+            "Creating point index for %s on %s",
+            label,
+            property_,
+        )
+        await self.cypher(f"CREATE POINT INDEX ON :{label}({property_})", auto_committing=True)
 
         return self
 
