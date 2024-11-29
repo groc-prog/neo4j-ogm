@@ -96,6 +96,9 @@ workers = 4
 [tool.isort]
 profile = "black"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
