@@ -11,6 +11,8 @@ from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
     UnsupportedDatabaseVersionError,
 )
+from pyneo4j_ogm.types.graph import EntityType
+from pyneo4j_ogm.types.memgraph import MemgraphDataType
 from tests.fixtures.db import (
     Authentication,
     ConnectionString,
@@ -121,6 +123,11 @@ class TestNeo4jConstraints:
         constraints = await query.values()
         assert len(constraints) == 4
 
+    async def _check_no_constraints(self, session: neo4j.AsyncSession):
+        query = await session.run("SHOW CONSTRAINT")
+        constraints = await query.values()
+        assert len(constraints) == 0
+
     async def test_drop_constraints(self, neo4j_session, neo4j_client):
         await self._setup_constraints(neo4j_session)
         await neo4j_client.drop_constraints()
@@ -134,6 +141,82 @@ class TestNeo4jConstraints:
             await neo4j_client.drop_constraints()
 
             cypher_spy.assert_called_once()
+
+    async def test_node_uniqueness_constraint(self, neo4j_session, neo4j_client):
+        await self._check_no_constraints(neo4j_session)
+        await neo4j_client.uniqueness_constraint("node_constraint", EntityType.NODE, "Person", "id")
+
+        query = await neo4j_session.run("SHOW CONSTRAINT")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][1] == "node_constraint"
+        assert constraints[0][2] == "UNIQUENESS"
+        assert constraints[0][3] == "NODE"
+        assert constraints[0][4] == ["Person"]
+        assert constraints[0][5] == ["id"]
+
+    async def test_node_uniqueness_constraint_multiple_properties(self, neo4j_session, neo4j_client):
+        await self._check_no_constraints(neo4j_session)
+        await neo4j_client.uniqueness_constraint("node_constraint", EntityType.NODE, "Person", ["id", "age"])
+
+        query = await neo4j_session.run("SHOW CONSTRAINT")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][1] == "node_constraint"
+        assert constraints[0][2] == "UNIQUENESS"
+        assert constraints[0][3] == "NODE"
+        assert constraints[0][4] == ["Person"]
+        assert constraints[0][5] == ["id", "age"]
+
+    async def test_node_uniqueness_constraint_raise_on_existing(self, neo4j_session, neo4j_client):
+        await self._check_no_constraints(neo4j_session)
+        await neo4j_client.uniqueness_constraint("node_constraint", EntityType.NODE, "Person", "id", True)
+
+        with pytest.raises(ClientError):
+            await neo4j_client.uniqueness_constraint("node_constraint", EntityType.NODE, "Person", "id", True)
+
+    async def test_relationship_uniqueness_constraint(self, neo4j_session, neo4j_client):
+        await self._check_no_constraints(neo4j_session)
+        await neo4j_client.uniqueness_constraint("relationship_constraint", EntityType.RELATIONSHIP, "Person", "id")
+
+        query = await neo4j_session.run("SHOW CONSTRAINT")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][1] == "relationship_constraint"
+        assert constraints[0][2] == "RELATIONSHIP_UNIQUENESS"
+        assert constraints[0][3] == "RELATIONSHIP"
+        assert constraints[0][4] == ["Person"]
+        assert constraints[0][5] == ["id"]
+
+    async def test_relationship_uniqueness_constraint_multiple_properties(self, neo4j_session, neo4j_client):
+        await self._check_no_constraints(neo4j_session)
+        await neo4j_client.uniqueness_constraint(
+            "relationship_constraint", EntityType.RELATIONSHIP, "Person", ["id", "age"]
+        )
+
+        query = await neo4j_session.run("SHOW CONSTRAINT")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][1] == "relationship_constraint"
+        assert constraints[0][2] == "RELATIONSHIP_UNIQUENESS"
+        assert constraints[0][3] == "RELATIONSHIP"
+        assert constraints[0][4] == ["Person"]
+        assert constraints[0][5] == ["id", "age"]
+
+    async def test_relationship_uniqueness_constraint_raise_on_existing(self, neo4j_session, neo4j_client):
+        await self._check_no_constraints(neo4j_session)
+        await neo4j_client.uniqueness_constraint(
+            "relationship_constraint", EntityType.RELATIONSHIP, "Person", "id", True
+        )
+
+        with pytest.raises(ClientError):
+            await neo4j_client.uniqueness_constraint(
+                "relationship_constraint", EntityType.RELATIONSHIP, "Person", "id", True
+            )
 
 
 class TestMemgraphConnection:
@@ -221,6 +304,11 @@ class TestMemgraphConstraints:
         constraints = await query.values()
         assert len(constraints) == 2
 
+    async def _check_no_constraints(self, session: neo4j.AsyncSession):
+        query = await session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+        assert len(constraints) == 0
+
     async def test_drop_constraints(self, memgraph_session, memgraph_client):
         await self._setup_constraints(memgraph_session)
         await memgraph_client.drop_constraints()
@@ -234,3 +322,444 @@ class TestMemgraphConstraints:
             await memgraph_client.drop_constraints()
 
             cypher_spy.assert_called_once()
+
+    async def test_existence_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.existence_constraint("Person", "id")
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "exists"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+
+    async def test_existence_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.existence_constraint("Person", ["id", "age"])
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "exists"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[1][0] == "exists"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+
+    async def test_uniqueness_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.uniqueness_constraint("Person", "id")
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "unique"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == ["id"]
+
+    async def test_uniqueness_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.uniqueness_constraint("Person", ["id", "age"])
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "unique"
+        assert constraints[0][1] == "Person"
+        assert set(constraints[0][2]) == set(["id", "age"])
+
+    async def test_bool_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "BOOL"
+
+    async def test_bool_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.BOOLEAN)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "BOOL"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "BOOL"
+
+    async def test_string_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.STRING)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "STRING"
+
+    async def test_string_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.STRING)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "STRING"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "STRING"
+
+    async def test_int_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.INTEGER)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "INTEGER"
+
+    async def test_int_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.INTEGER)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "INTEGER"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "INTEGER"
+
+    async def test_float_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.FLOAT)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "FLOAT"
+
+    async def test_float_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.FLOAT)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "FLOAT"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "FLOAT"
+
+    async def test_list_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LIST)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "LIST"
+
+    async def test_list_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.LIST)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "LIST"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "LIST"
+
+    async def test_map_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.MAP)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "MAP"
+
+    async def test_map_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.MAP)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "MAP"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "MAP"
+
+    async def test_duration_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DURATION)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "DURATION"
+
+    async def test_duration_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.DURATION)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "DURATION"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "DURATION"
+
+    async def test_date_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DATE)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "DATE"
+
+    async def test_date_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.DATE)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "DATE"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "DATE"
+
+    async def test_local_time_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_TIME)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "LOCAL TIME"
+
+    async def test_local_time_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.LOCAL_TIME)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "LOCAL TIME"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "LOCAL TIME"
+
+    async def test_local_datetime_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_DATETIME)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "LOCAL DATE TIME"
+
+    async def test_local_datetime_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.LOCAL_DATETIME)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "LOCAL DATE TIME"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "LOCAL DATE TIME"
+
+    async def test_zoned_datetime_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ZONED_DATETIME)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "ZONED DATE TIME"
+
+    async def test_zoned_datetime_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.ZONED_DATETIME)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "ZONED DATE TIME"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "ZONED DATE TIME"
+
+    async def test_enum_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ENUM)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "ENUM"
+
+    async def test_enum_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.ENUM)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "ENUM"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "ENUM"
+
+    async def test_point_data_type_constraint(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.POINT)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 1
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "POINT"
+
+    async def test_point_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", ["id", "age"], MemgraphDataType.POINT)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+
+        assert len(constraints) == 2
+        assert constraints[0][0] == "data_type"
+        assert constraints[0][1] == "Person"
+        assert constraints[0][2] == "id"
+        assert constraints[0][3] == "POINT"
+        assert constraints[1][0] == "data_type"
+        assert constraints[1][1] == "Person"
+        assert constraints[1][2] == "age"
+        assert constraints[1][3] == "POINT"
