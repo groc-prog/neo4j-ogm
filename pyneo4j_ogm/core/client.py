@@ -746,6 +746,7 @@ class Neo4jClient(Pyneo4jClient):
 
         logger.debug("Creating text index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE TEXT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
+
         return self
 
     @ensure_initialized
