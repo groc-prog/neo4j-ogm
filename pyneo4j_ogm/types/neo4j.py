@@ -10,6 +10,8 @@ class Neo4jIndexType(Enum):
     TEXT = "TEXT"
     POINT = "POINT"
     TOKEN_LOOKUP = "TOKEN_LOOKUP"
+    FULLTEXT = "FULLTEXT"
+    VECTOR = "VECTOR"
 
 
 class Neo4jConstraintType(Enum):
