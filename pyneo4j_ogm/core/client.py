@@ -78,6 +78,39 @@ def initialize_models_after(func):
     return wrapper
 
 
+def ensure_neo4j_version(major_version: int, minor_version: int, patch_version: int):
+    """
+    Ensures that the connected Neo4j database has a minimum version. Only usable for
+    `Neo4jClient`.
+
+    Args:
+        major_version (int): The lowest allowed major version.
+        minor_version (int): The lowest allowed minor version.
+        patch_version (int): The lowest allowed patch version.
+    """
+
+    def decorator(func):
+
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            logger.debug("Ensuring client has minimum required version")
+            version = cast(Optional[str], getattr(self, "_version", None))
+            if version is None:
+                raise ClientNotInitializedError()
+
+            major, minor, patch = [int(semver_partial) for semver_partial in version.split(".")]
+
+            if major < major_version or minor < minor_version or patch < patch_version:
+                raise UnsupportedDatabaseVersionError()
+
+            result = await func(self, *args, **kwargs)
+            return result
+
+        return wrapper
+
+    return decorator
+
+
 def ensure_initialized(func):
     """
     Ensures the driver of the client is initialized before interacting with the database.
@@ -94,14 +127,13 @@ def ensure_initialized(func):
 
     @wraps(func)
     async def wrapper(self, *args, **kwargs):
+        logger.debug("Ensuring client is initialized")
         if getattr(self, "_driver", None) is None:
             raise ClientNotInitializedError()
 
         result = await func(self, *args, **kwargs)
         return result
 
-    logger.debug("Ensuring client is initialized")
-    wrapper.__annotations__ = func.__annotations__
     return wrapper
 
 
@@ -588,6 +620,8 @@ class Neo4jClient(Pyneo4jClient):
     constraints and other utilities.
     """
 
+    _version: Optional[str]
+
     @ensure_initialized
     async def drop_constraints(self) -> Self:
         logger.debug("Discovering constraints")
@@ -789,11 +823,96 @@ class Neo4jClient(Pyneo4jClient):
         return self
 
     @ensure_initialized
+    async def fulltext_index(
+        self,
+        name: str,
+        labels_or_types: Union[List[str], str],
+        entity_type: EntityType,
+        properties: Union[List[str], str],
+        raise_on_existing: bool = False,
+    ) -> Self:
+        """
+        Creates a fulltext index for the given node or relationship. By default, this will se `IF NOT EXISTS`
+        when creating indexes to prevent errors if the index already exists. This behavior can be
+        changed by passing `raise_on_existing` as `True`.
+
+        Args:
+            name (str): The name of the index.
+            entity_type (EntityType): The type of graph entity for which the index will be created.
+            labels_or_types (Union[List[str], str]): When creating a index for a node, the labels on which the index will be created.
+                In case of a relationship, the relationship types.
+            properties (Union[List[str], str]): The properties which should be affected by the index.
+            raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
+                Defaults to `False`.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating fulltext index %s for %s", name, labels_or_types)
+        normalized_properties = [properties] if isinstance(properties, str) else properties
+
+        existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
+        properties_pattern = ", ".join(f"e.{property_}" for property_ in normalized_properties)
+
+        if entity_type == EntityType.NODE:
+            entity_pattern = QueryBuilder.node_pattern("e", labels_or_types, True)
+        else:
+            entity_pattern = QueryBuilder.relationship_pattern("e", labels_or_types)
+
+        logger.debug("Creating fulltext index for %s on properties %s", labels_or_types, properties_pattern)
+        await self.cypher(
+            f"CREATE FULLTEXT INDEX {name}{existence_pattern} FOR {entity_pattern} ON EACH [{properties_pattern}]"
+        )
+
+        return self
+
+    @ensure_initialized
+    @ensure_neo4j_version(5, 18, 0)
+    async def vector_index(
+        self,
+        name: str,
+        label_or_type: str,
+        entity_type: EntityType,
+        property_: str,
+        raise_on_existing: bool = False,
+    ) -> Self:
+        """
+        Creates a vector index for the given node or relationship. By default, this will se `IF NOT EXISTS`
+        when creating indexes to prevent errors if the index already exists. This behavior can be
+        changed by passing `raise_on_existing` as `True`.
+
+        Args:
+            name (str): The name of the index.
+            entity_type (EntityType): The type of graph entity for which the index will be created.
+            label_or_type (str): When creating a index for a node, the label on which the index will be created.
+                In case of a relationship, the relationship type.
+            property_ (str): The property which should be affected by the index.
+            raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
+                Defaults to `False`.
+
+        Returns:
+            Self: The client.
+        """
+        logger.info("Creating vector index %s for %s", name, label_or_type)
+        existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
+
+        if entity_type == EntityType.NODE:
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+        else:
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+
+        logger.debug("Creating vector index for %s on property %s", label_or_type, property_)
+        await self.cypher(f"CREATE VECTOR INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
+
+        return self
+
+    @ensure_initialized
     async def _check_database_version(self) -> None:
         logger.debug("Checking if Neo4j version is supported")
         server_info = await cast(AsyncDriver, self._driver).get_server_info()
 
         version = server_info.agent.split("/")[1]
+        self._version = version
 
         if int(version.split(".")[0]) < 5:
             raise UnsupportedDatabaseVersionError()
