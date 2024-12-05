@@ -30,6 +30,11 @@ class TestNodePattern:
 
         assert pattern == "(:Person:Worker:Retail)"
 
+    def test_pattern_with_multiple_label_pipe_chaining(self):
+        pattern = QueryBuilder.node_pattern(labels=["Person", "Worker", "Retail"], pipe_chaining=True)
+
+        assert pattern == "(:Person|Worker|Retail)"
+
     def test_pattern_with_multiple_label_with_ref(self):
         pattern = QueryBuilder.node_pattern("n", ["Person", "Worker", "Retail"])
 
