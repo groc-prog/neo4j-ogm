@@ -48,9 +48,14 @@ class TestRelationshipPattern:
         assert pattern == "()-[r]->()"
 
     def test_pattern_with_relationship_type(self):
-        pattern = QueryBuilder.relationship_pattern(type_="LOVES")
+        pattern = QueryBuilder.relationship_pattern(types="LOVES")
 
         assert pattern == "()-[:LOVES]->()"
+
+    def test_pattern_with_multiple_relationship_type(self):
+        pattern = QueryBuilder.relationship_pattern(types=["LOVES", "HATES"])
+
+        assert pattern == "()-[:LOVES|HATES]->()"
 
     def test_pattern_with_incoming_direction(self):
         pattern = QueryBuilder.relationship_pattern(direction=RelationshipDirection.INCOMING)
