@@ -2,13 +2,10 @@
   "python.testing.pytestArgs": [
     "tests",
     "-W ignore::DeprecationWarning",
+    "--cov=pyneo4j_ogm",
+    "--cov-report=html"
   ],
   "python.testing.pytestEnabled": true,
-  "markdownlint.config": {
-    "MD024": false,
-    "MD039": false,
-    "MD041": false
-  },
   "files.exclude": {
     "**/.git": true,
     "**/.svn": true,

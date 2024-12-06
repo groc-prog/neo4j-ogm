@@ -168,14 +168,14 @@ class Pyneo4jClient(ABC):
         """
         Drops all existing constraints.
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def drop_indexes(self) -> Self:
         """
         Drops all existing indexes.
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def _check_database_version(self) -> None:
@@ -185,7 +185,7 @@ class Pyneo4jClient(ABC):
         Raises:
             UnsupportedDatabaseVersionError: Connected to a database with a unsupported version.
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     async def _initialize_models(self) -> None:
@@ -195,7 +195,7 @@ class Pyneo4jClient(ABC):
         creation. All registered models have to be added to the `_initialized_models` set to
         allow tracking of models which have not been initialized yet.
         """
-        pass
+        pass  # pragma: no cover
 
     async def connected(self) -> bool:
         """
