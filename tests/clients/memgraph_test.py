@@ -103,10 +103,12 @@ class TestMemgraphConstraints:
     async def _setup_constraints(self, session: neo4j.AsyncSession):
         await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.id IS UNIQUE")
         await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.name, n.address IS UNIQUE")
+        await session.run("CREATE CONSTRAINT ON (n:label) ASSERT EXISTS (n.property)")
+        await session.run("CREATE CONSTRAINT ON (n:label) ASSERT n.property IS TYPED STRING")
 
         query = await session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
-        assert len(constraints) == 2
+        assert len(constraints) == 4
 
     async def _check_no_constraints(self, session: neo4j.AsyncSession):
         query = await session.run("SHOW CONSTRAINT INFO")
