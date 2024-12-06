@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 import neo4j
+import neo4j.graph
 import pytest
 from neo4j.exceptions import AuthError, ClientError
 
@@ -520,6 +521,45 @@ class TestNeo4jIndexes:
         with patch.object(neo4j_client, "_version", "5.1.9"):
             with pytest.raises(UnsupportedDatabaseVersionError):
                 await neo4j_client.vector_index("vector_index", "Person", EntityType.NODE, "age")
+
+
+class TestNeo4jDatabaseInteractions:
+    async def test_drop_nodes(self, neo4j_client, neo4j_session):
+        await neo4j_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
+        query = await neo4j_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        assert len(result) == 4
+
+        await neo4j_client.drop_nodes()
+
+        query = await neo4j_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        assert len(result) == 0
+
+    async def test_batching(self, neo4j_client, neo4j_session):
+        async with neo4j_client.batching():
+            await neo4j_client.cypher("CREATE (:Developer)")
+            await neo4j_client.cypher("CREATE (:Coffee)")
+            await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+            query = await neo4j_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            assert len(result) == 0
+
+        query = await neo4j_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        assert len(result) == 2
+
+    async def test_batching_query(self, neo4j_client, neo4j_session):
+        await neo4j_session.run("CREATE (:Developer)")
+        await neo4j_session.run("CREATE (:Coffee)")
+
+        async with neo4j_client.batching():
+            results, _ = await neo4j_client.cypher("MATCH (n) RETURN n")
+            assert len(results) == 2
+
+            for result in results:
+                assert isinstance(result[0], neo4j.graph.Node)
 
 
 class TestMemgraphConnection:
@@ -1190,3 +1230,42 @@ class TestMemgraphIndexes:
         await self._check_no_indexes(memgraph_session)
         return_value = await memgraph_client.point_index("Person", "age")
         assert memgraph_client == return_value
+
+
+class TestMemgraphDatabaseInteractions:
+    async def test_drop_nodes(self, memgraph_client, memgraph_session):
+        await memgraph_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
+        query = await memgraph_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        assert len(result) == 4
+
+        await memgraph_client.drop_nodes()
+
+        query = await memgraph_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        assert len(result) == 0
+
+    async def test_batching(self, memgraph_client, memgraph_session):
+        async with memgraph_client.batching():
+            await memgraph_client.cypher("CREATE (:Developer)")
+            await memgraph_client.cypher("CREATE (:Coffee)")
+            await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+            query = await memgraph_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            assert len(result) == 0
+
+        query = await memgraph_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        assert len(result) == 2
+
+    async def test_batching_query(self, memgraph_client, memgraph_session):
+        await memgraph_session.run("CREATE (:Developer)")
+        await memgraph_session.run("CREATE (:Coffee)")
+
+        async with memgraph_client.batching():
+            results, _ = await memgraph_client.cypher("MATCH (n) RETURN n")
+            assert len(results) == 2
+
+            for result in results:
+                assert isinstance(result[0], neo4j.graph.Node)
