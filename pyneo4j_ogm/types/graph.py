@@ -4,7 +4,7 @@ from enum import Enum
 class EntityType(Enum):
     """
     Available entity types for both Neo4j and Memgraph. Even though relationships are
-    called edges in Memgraph, this package will call the relationships anyways.
+    called edges in Memgraph, this package will call them relationships anyways.
     """
 
     NODE = "NODE"
