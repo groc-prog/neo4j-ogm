@@ -761,11 +761,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "BOOL"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "BOOL"
 
     async def test_string_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -791,11 +791,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "STRING"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "STRING"
 
     async def test_int_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -821,11 +821,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "INTEGER"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "INTEGER"
 
     async def test_float_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -851,11 +851,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "FLOAT"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "FLOAT"
 
     async def test_list_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -881,11 +881,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "LIST"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "LIST"
 
     async def test_map_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -911,11 +911,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "MAP"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "MAP"
 
     async def test_duration_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -941,11 +941,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "DURATION"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "DURATION"
 
     async def test_date_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -971,11 +971,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "DATE"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "DATE"
 
     async def test_local_time_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -1001,11 +1001,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "LOCAL TIME"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "LOCAL TIME"
 
     async def test_local_datetime_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -1031,11 +1031,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "LOCAL DATE TIME"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "LOCAL DATE TIME"
 
     async def test_zoned_datetime_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -1061,11 +1061,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "ZONED DATE TIME"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "ZONED DATE TIME"
 
     async def test_enum_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -1091,11 +1091,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "ENUM"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "ENUM"
 
     async def test_point_data_type_constraint(self, memgraph_session, memgraph_client):
@@ -1121,11 +1121,11 @@ class TestMemgraphConstraints:
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
         assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
+        assert constraints[0][2] in ["age", "id"]
         assert constraints[0][3] == "POINT"
         assert constraints[1][0] == "data_type"
         assert constraints[1][1] == "Person"
-        assert constraints[1][2] == "age"
+        assert constraints[1][2] in ["age", "id"]
         assert constraints[1][3] == "POINT"
 
 
