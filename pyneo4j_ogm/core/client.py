@@ -318,11 +318,11 @@ class Pyneo4jClient(ABC):
             query_parameters = parameters
 
         if auto_committing:
-            return await self._with_auto_committing_transaction(
+            return await self.__with_auto_committing_transaction(
                 query, query_parameters, resolve_models, raise_on_resolve_exc
             )
         else:
-            return await self._with_implicit_transaction(query, query_parameters, resolve_models, raise_on_resolve_exc)
+            return await self.__with_implicit_transaction(query, query_parameters, resolve_models, raise_on_resolve_exc)
 
     @initialize_models_after
     async def register_models(self, models: List[Union[Type[NodeModel], Type[RelationshipModel]]]) -> Self:
@@ -408,15 +408,15 @@ class Pyneo4jClient(ABC):
         try:
             self._using_batches = True
             logger.info("Starting batch transaction")
-            await self._begin_transaction()
+            await self.__begin_transaction()
 
             yield None
 
             logger.info("Batching transaction finished")
-            await self._commit_transaction()
+            await self.__commit_transaction()
         except Exception as exc:
             logger.error(exc)
-            await self._rollback_transaction()
+            await self.__rollback_transaction()
             raise exc
         finally:
             self._using_batches = False
@@ -433,7 +433,7 @@ class Pyneo4jClient(ABC):
         return self
 
     @ensure_initialized
-    async def _begin_transaction(self) -> None:
+    async def __begin_transaction(self) -> None:
         """
         Checks for existing sessions/transactions and begins new ones if none exist.
 
@@ -452,7 +452,7 @@ class Pyneo4jClient(ABC):
         logger.debug("Transaction %s for session %s acquired", self._transaction, self._session)
 
     @ensure_initialized
-    async def _commit_transaction(self) -> None:
+    async def __commit_transaction(self) -> None:
         """
         Commits the current transaction and closes it.
 
@@ -472,7 +472,7 @@ class Pyneo4jClient(ABC):
         logger.debug("Session closed")
 
     @ensure_initialized
-    async def _rollback_transaction(self) -> None:
+    async def __rollback_transaction(self) -> None:
         """
         Rolls the current transaction back and closes it.
 
@@ -491,7 +491,7 @@ class Pyneo4jClient(ABC):
         self._session = None
         logger.debug("Session closed")
 
-    async def _with_implicit_transaction(
+    async def __with_implicit_transaction(
         self,
         query: Union[str, LiteralString, Query],
         parameters: Dict[str, Any],
@@ -521,7 +521,7 @@ class Pyneo4jClient(ABC):
         """
         if not self._using_batches:
             # If we are currently using batching, we should already be inside a active session/transaction
-            await self._begin_transaction()
+            await self.__begin_transaction()
 
         try:
             logger.info("%s with parameters %s", query, parameters)
@@ -542,7 +542,7 @@ class Pyneo4jClient(ABC):
 
             if not self._using_batches:
                 # Again, don't commit anything to the database when batching is enabled
-                await self._commit_transaction()
+                await self.__commit_transaction()
 
             return results, keys
         except Exception as exc:
@@ -550,11 +550,11 @@ class Pyneo4jClient(ABC):
 
             if not self._using_batches:
                 # Same as in the beginning, we don't want to roll back anything if we use batching
-                await self._rollback_transaction()
+                await self.__rollback_transaction()
 
             raise exc
 
-    async def _with_auto_committing_transaction(
+    async def __with_auto_committing_transaction(
         self,
         query: Union[str, LiteralString, Query],
         parameters: Dict[str, Any],
