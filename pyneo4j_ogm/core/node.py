@@ -1,5 +1,5 @@
-from abc import ABC
+from pydantic import BaseModel
 
 
-class NodeModel(ABC):
+class NodeModel(BaseModel):
     pass
