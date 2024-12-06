@@ -57,7 +57,7 @@ class TestRegistry:
         registry.register(client1)
         registry.register(client2)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(InvalidClientError):
             registry.register(NotAClient())
 
         assert client1 in registry._thread_ctx.clients
