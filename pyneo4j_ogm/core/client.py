@@ -400,9 +400,9 @@ class Pyneo4jClient(ABC):
         return self
 
     @asynccontextmanager
-    async def with_batching(self) -> AsyncGenerator[None, Any]:
+    async def batching(self) -> AsyncGenerator[None, Any]:
         """
-        Batches all queries called inside this context manager into a single transaction. Inside
+        Batches all WRITE operations called inside this context manager into a single transaction. Inside
         the context, both client queries and model methods can be called.
         """
         try:
