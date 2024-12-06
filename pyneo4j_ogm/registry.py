@@ -6,7 +6,7 @@ from pyneo4j_ogm.exceptions import InvalidClientError
 from pyneo4j_ogm.logger import logger
 
 if TYPE_CHECKING:
-    from pyneo4j_ogm.clients.base import Pyneo4jClient
+    from pyneo4j_ogm.clients.base import Pyneo4jClient  # pragma: no cover
 else:
     Pyneo4jClient = object
 
@@ -54,7 +54,7 @@ class Registry:
         registered_clients = cast(Set[Pyneo4jClient], getattr(self._thread_ctx, "clients"))
 
         if registered_clients is None or not isinstance(client, Pyneo4jClient):
-            raise ValueError("Context not initialized")
+            raise InvalidClientError()
 
         registered_clients.add(client)
 
