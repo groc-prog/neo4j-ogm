@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pyneo4j_ogm.core.client import Pyneo4jClient
-from pyneo4j_ogm.core.registry import Registry, with_client
+from pyneo4j_ogm.clients.base import Pyneo4jClient
 from pyneo4j_ogm.exceptions import InvalidClientError
+from pyneo4j_ogm.registry import Registry, with_client
 
 
 @pytest.fixture(autouse=True)
@@ -35,14 +35,15 @@ class TestRegistry:
 
     def test_register_single_client(self, registry):
         client = MagicMock(spec=Pyneo4jClient)
-        registry.register([client])
+        registry.register(client)
 
         assert client in registry._thread_ctx.clients
 
     def test_register_multiple_clients(self, registry):
         client1 = MagicMock(spec=Pyneo4jClient)
         client2 = MagicMock(spec=Pyneo4jClient)
-        registry.register([client1, client2])
+        registry.register(client1)
+        registry.register(client2)
 
         assert client1 in registry._thread_ctx.clients
         assert client2 in registry._thread_ctx.clients
@@ -53,7 +54,11 @@ class TestRegistry:
 
         client1 = MagicMock(spec=Pyneo4jClient)
         client2 = MagicMock(spec=Pyneo4jClient)
-        registry.register([client1, client2, NotAClient()])
+        registry.register(client1)
+        registry.register(client2)
+
+        with pytest.raises(ValueError):
+            registry.register(NotAClient())
 
         assert client1 in registry._thread_ctx.clients
         assert client2 in registry._thread_ctx.clients
@@ -62,13 +67,14 @@ class TestRegistry:
     def test_register_and_set_active_client(self, registry):
         client1 = MagicMock(spec=Pyneo4jClient)
         client2 = MagicMock(spec=Pyneo4jClient)
-        registry.register([client1, client2])
+        registry.register(client1)
+        registry.register(client2)
 
         assert registry.active_client == client1
 
     def test_deregister_client(self, registry):
         client = MagicMock(spec=Pyneo4jClient)
-        registry.register([client])
+        registry.register(client)
 
         registry.deregister(client)
 
@@ -77,7 +83,8 @@ class TestRegistry:
     def test_deregister_active_client(self, registry):
         client1 = MagicMock(spec=Pyneo4jClient)
         client2 = MagicMock(spec=Pyneo4jClient)
-        registry.register([client1, client2])
+        registry.register(client1)
+        registry.register(client2)
 
         registry.deregister(client1)
 
@@ -85,7 +92,7 @@ class TestRegistry:
 
     def test_deregister_and_empty_registry(self, registry):
         client = MagicMock(spec=Pyneo4jClient)
-        registry.register([client])
+        registry.register(client)
 
         registry.deregister(client)
 
@@ -100,7 +107,7 @@ class TestRegistry:
 
     def test_set_active_client(self, registry):
         client = MagicMock(spec=Pyneo4jClient)
-        registry.register([client])
+        registry.register(client)
 
         registry.set_active_client(client)
 
@@ -114,7 +121,7 @@ class TestRegistry:
 
     def test_set_active_client_to_none(self, registry):
         client = MagicMock(spec=Pyneo4jClient)
-        registry.register([client])
+        registry.register(client)
 
         registry.set_active_client(None)
 
@@ -128,7 +135,9 @@ class TestRegistryMultiThreaded:
 
         def register_clients_in_thread(clients: List[Pyneo4jClient], results: dict, thread_name: str):
             registry = Registry()
-            registry.register(clients)
+
+            for client in clients:
+                registry.register(client)
 
             results[thread_name] = {
                 "clients": registry._thread_ctx.clients,
@@ -173,7 +182,10 @@ class TestRegistryMultiThreaded:
 
         def set_active_client_in_thread(clients: List[Pyneo4jClient], results, thread_name):
             registry = Registry()
-            registry.register(clients)
+
+            for client in clients:
+                registry.register(client)
+
             registry.set_active_client(clients[1])
             results[thread_name] = registry.active_client
 
@@ -197,7 +209,10 @@ class TestRegistryMultiThreaded:
 
         def register_and_deregister(clients: List[Pyneo4jClient], results, thread_name):
             registry = Registry()
-            registry.register(clients)
+
+            for client in clients:
+                registry.register(client)
+
             registry.deregister(clients[0])
             results[thread_name] = {
                 "remaining_clients": registry._thread_ctx.clients,
@@ -224,7 +239,10 @@ class TestRegistryMultiThreaded:
 
         def use_with_client_context(clients: List[Pyneo4jClient], results, thread_name):
             registry = Registry()
-            registry.register(clients)
+
+            for client in clients:
+                registry.register(client)
+
             original_client = registry.active_client
 
             with with_client(clients[1]):
@@ -257,7 +275,10 @@ class TestRegistryMultiThreaded:
 
         def deregister_active_client(clients: List[Pyneo4jClient], results, thread_name):
             registry = Registry()
-            registry.register(clients)
+
+            for client in clients:
+                registry.register(client)
+
             registry.set_active_client(clients[0])
             registry.deregister(clients[0])
 
@@ -287,7 +308,8 @@ class TestWithClientFunction:
     def test_with_client_sets_active_client(self, registry):
         client_one = MagicMock(spec=Pyneo4jClient)
         client_two = MagicMock(spec=Pyneo4jClient)
-        registry.register([client_one, client_two])
+        registry.register(client_one)
+        registry.register(client_two)
 
         with with_client(client_two) as client:
             assert registry.active_client == client_two

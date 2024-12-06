@@ -1,8 +1,3 @@
-"""
-Exceptions raised by different methods.
-"""
-
-
 class Pyneo4jError(Exception):
     """
     Base exception for all Pyneo4j exceptions.

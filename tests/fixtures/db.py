@@ -7,7 +7,8 @@ from enum import Enum
 import pytest
 from neo4j import AsyncGraphDatabase
 
-from pyneo4j_ogm.core.client import MemgraphClient, Neo4jClient
+from pyneo4j_ogm.clients.memgraph import MemgraphClient
+from pyneo4j_ogm.clients.neo4j import Neo4jClient
 from pyneo4j_ogm.types.memgraph import (
     MemgraphConstraintType,
     MemgraphDataTypeMapping,

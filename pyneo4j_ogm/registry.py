@@ -1,15 +1,14 @@
-"""
-Registry module managing client/model registration. Active clients used by models to run queries
-will be handled by this class.
-"""
-
 import threading
 from contextlib import contextmanager
-from typing import Any, Generator, List, Optional, Set, cast
+from typing import TYPE_CHECKING, Any, Generator, Optional, Set, cast
 
-from pyneo4j_ogm.core.client import Pyneo4jClient
 from pyneo4j_ogm.exceptions import InvalidClientError
 from pyneo4j_ogm.logger import logger
+
+if TYPE_CHECKING:
+    from pyneo4j_ogm.clients.base import Pyneo4jClient
+else:
+    Pyneo4jClient = object
 
 
 class Registry:
@@ -41,34 +40,26 @@ class Registry:
         """
         return getattr(self._thread_ctx, "active_client", None)
 
-    def register(self, clients: List[Pyneo4jClient]) -> None:
+    def register(self, client: Pyneo4jClient) -> None:
         """
         Registers multiple clients with the registry. Only registered clients will be injected into a model
         instance/method to run queries.
 
         Args:
-            client (List[Pyneo4jClient]): The list of clients to register.
+            client (Pyneo4jClient): The client to register.
         """
-        logger.debug("Registering %s clients with registry", len(clients))
-        registered_clients = cast(Set[Pyneo4jClient], getattr(self._thread_ctx, "clients", set()))
+        from pyneo4j_ogm.clients.base import Pyneo4jClient
 
-        # Also track the available clients, so in case there are multiple we can set the first one
-        # as the active one automatically
-        available_clients: List[Pyneo4jClient] = []
+        logger.debug("Registering client %s with registry", client)
+        registered_clients = cast(Set[Pyneo4jClient], getattr(self._thread_ctx, "clients"))
 
-        for client in clients:
-            if not isinstance(client, Pyneo4jClient):
-                continue
+        if registered_clients is None or not isinstance(client, Pyneo4jClient):
+            raise ValueError("Context not initialized")
 
-            logger.debug("Registering client %s", client)
-            registered_clients.add(client)
-            available_clients.append(client)
+        registered_clients.add(client)
 
         if getattr(self._thread_ctx, "active_client", None) is None and len(registered_clients) > 0:
-            if len(registered_clients) > 1:
-                logger.info("Multiple clients registered at once, setting first client as active")
-
-            setattr(self._thread_ctx, "active_client", next(iter(available_clients)))
+            setattr(self._thread_ctx, "active_client", client)
 
     def deregister(self, client: Pyneo4jClient) -> None:
         """
@@ -87,7 +78,7 @@ class Registry:
         logger.debug("De-registering client %s", client)
         registered_clients.remove(client)
 
-        # TODO: Maybe we want to raise an exception here instead so we don't get some **magic** behavior
+        # NOTE: Maybe we want to raise an exception here instead so we don't get some **magic** behavior
         # if someone de-registers the currently active client
         if self.active_client == client:
             logger.debug("Active client de-registered, switching active client")
@@ -110,6 +101,8 @@ class Registry:
             InvalidClientError: If `client` is not an instance of `Pyneo4jClient` or not registered
                 yet.
         """
+        from pyneo4j_ogm.clients.base import Pyneo4jClient
+
         if client is not None and (
             not isinstance(client, Pyneo4jClient)
             or client not in cast(Set[Pyneo4jClient], getattr(self._thread_ctx, "clients", set()))
