@@ -1,12 +1,14 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from pyneo4j_ogm.types.graph import OptionStrategy
 from pyneo4j_ogm.types.memgraph import MemgraphDataType
 
-Option = Union[bool, Tuple[bool, OptionStrategy], Tuple[bool, OptionStrategy, str]]
+Option = Union[bool, Tuple[bool, OptionStrategy], Tuple[bool, OptionStrategy, Union[List[str], str]]]
 MemgraphDataTypeOption = Union[
-    Optional[MemgraphDataType], Tuple[MemgraphDataType, OptionStrategy], Tuple[MemgraphDataType, OptionStrategy, str]
+    Optional[MemgraphDataType],
+    Tuple[MemgraphDataType, OptionStrategy],
+    Tuple[MemgraphDataType, OptionStrategy, Union[List[str], str]],
 ]
 
 

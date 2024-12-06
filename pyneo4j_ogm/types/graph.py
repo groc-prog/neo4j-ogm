@@ -30,3 +30,12 @@ class OptionStrategy(Enum):
     FIRST = 1
     LAST = 2
     SELECTED = 3
+
+
+class EagerFetchStrategy(Enum):
+    """
+    Available strategies used when eagerly fetching neighboring nodes.
+    """
+
+    DEFAULT = 0
+    AS_SPLIT_QUERY = 1
