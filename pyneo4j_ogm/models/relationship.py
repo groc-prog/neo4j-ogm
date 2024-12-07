@@ -1,5 +1,2 @@
-from pydantic import BaseModel
-
-
-class RelationshipModel(BaseModel):
+class RelationshipModel:
     pass

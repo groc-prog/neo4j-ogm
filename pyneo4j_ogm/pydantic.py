@@ -47,3 +47,20 @@ def get_model_fields(model: Type[BaseModel]) -> Dict[str, Any]:
         return model.model_fields
 
     return model.__fields__
+
+
+def get_model_dump(model: BaseModel, *args, **kwargs):
+    """
+    Returns the model as a dictionary using Pydantic's `model_dump` or `dict` methods.
+    This method also accepts all arguments the Pydantic method accepts.
+
+    Args:
+        model (BaseModel): The model to dump.
+
+    Returns:
+        Dict[Any, Any]: The dumped model.
+    """
+    if IS_PYDANTIC_V2:
+        return model.model_dump(*args, **kwargs)
+    else:
+        return model.dict(*args, **kwargs)
