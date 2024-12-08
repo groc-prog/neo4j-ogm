@@ -48,8 +48,8 @@ class ModelConfigurationValidator(BaseModel):
     Validation model for Node/Relationship model options
     """
 
-    pre_hooks: Dict[Hooks, Union[Callable, List[Callable]]]
-    post_hooks: Dict[Hooks, Union[Callable, List[Callable]]]
+    pre_hooks: Dict[Hooks, List[Callable]]
+    post_hooks: Dict[Hooks, List[Callable]]
     skip_constraint_creation: bool
     skip_index_creation: bool
     eager_fetch: bool
@@ -59,34 +59,48 @@ class ModelConfigurationValidator(BaseModel):
 
     if IS_PYDANTIC_V2:
 
-        @field_validator("pre_hooks", "post_hooks")
+        @field_validator("pre_hooks", "post_hooks", mode="before")
         @classmethod
         def normalize_hooks_pydantic_v2(cls, value: Any):
-            if not isinstance(value, dict):
-                raise ValueError("Hooks must be a dictionary")
+            return cls.__validator_hooks(value)
 
-            normalized = {}
-            for key, hooks in value.items():
-                if isinstance(hooks, list):
-                    normalized[key] = [hook for hook in hooks if callable(hook)]
-                elif callable(hooks):
-                    normalized[key] = [hooks]
-
-            return normalized
+        @field_validator("labels", mode="before")
+        @classmethod
+        def normalize_labels_pydantic_v2(cls, value: Any):
+            return cls.__validate_labels(value)
 
     else:
 
-        @validator("pre_hooks", "post_hooks")
-        @classmethod
+        @validator("pre_hooks", "post_hooks", pre=True)
         def normalize_hooks_pydantic_v1(cls, value: Any):
-            if not isinstance(value, dict):
-                raise ValueError("Hooks must be a dictionary")
+            return cls.__validator_hooks(value)
 
-            normalized = {}
-            for key, hooks in value.items():
-                if isinstance(hooks, list):
-                    normalized[key] = [hook for hook in hooks if callable(hook)]
-                elif callable(hooks):
-                    normalized[key] = [hooks]
+        @validator("labels", pre=True)
+        def normalize_labels_pydantic_v1(cls, value: Any):
+            return cls.__validate_labels(value)
 
-            return normalized
+    @classmethod
+    def __validator_hooks(cls, value: Any) -> Dict[str, List[Callable]]:
+        if not isinstance(value, dict):
+            raise ValueError("Hooks must be a dictionary")
+
+        normalized = {}
+        for key, hooks in value.items():
+            if isinstance(hooks, list):
+                normalized[key] = [hook for hook in hooks if callable(hook)]
+            elif callable(hooks):
+                normalized[key] = [hooks]
+
+        return normalized
+
+    @classmethod
+    def __validate_labels(cls, value: Any) -> Set[str]:
+        if not isinstance(value, (str, list, set)):
+            raise ValueError("Labels must be string|list|set")
+
+        if isinstance(value, str):
+            return set([value])
+        elif isinstance(value, list):
+            return set(value)
+
+        return value
