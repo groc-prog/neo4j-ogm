@@ -1,9 +1,9 @@
 from copy import deepcopy
-from typing import Any, ClassVar, Dict
+from typing import Any, Dict
 
 from pydantic import BaseModel, PrivateAttr
 
-from pyneo4j_ogm.options.model_options import BaseConfig, ModelConfigurationValidator
+from pyneo4j_ogm.options.model_options import ModelConfigurationValidator
 from pyneo4j_ogm.pydantic import get_model_dump
 from pyneo4j_ogm.registry import Registry
 from pyneo4j_ogm.types.graph import EagerFetchStrategy
@@ -15,11 +15,11 @@ class ModelBase(BaseModel):
     of model properties.
     """
 
-    ogm_config: ClassVar[BaseConfig]
-    _registry: Registry = PrivateAttr(Registry())
+    _registry: Registry = PrivateAttr()
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        cls._registry = Registry()
 
         # Get parent config
         parent_config = getattr(
