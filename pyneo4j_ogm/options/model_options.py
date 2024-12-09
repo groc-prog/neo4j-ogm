@@ -1,6 +1,6 @@
 from typing import Any, Callable, Dict, List, Set, Tuple, TypedDict, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pyneo4j_ogm.pydantic import IS_PYDANTIC_V2
 from pyneo4j_ogm.types.graph import EagerFetchStrategy
@@ -32,7 +32,7 @@ class NodeConfig(BaseConfig, total=False):
     Configuration options for node models used to control behavior and trigger side effects
     """
 
-    labels: Union[str, List[str]]
+    labels: Union[str, List[str], Set[str]]
 
 
 class RelationshipConfig(BaseConfig, total=False):
@@ -48,39 +48,39 @@ class ModelConfigurationValidator(BaseModel):
     Validation model for Node/Relationship model options
     """
 
-    pre_hooks: Dict[Hooks, List[Callable]]
-    post_hooks: Dict[Hooks, List[Callable]]
-    skip_constraint_creation: bool
-    skip_index_creation: bool
-    eager_fetch: bool
-    eager_fetch_strategy: EagerFetchStrategy
-    labels: Set[str]
-    type: str
+    pre_hooks: Dict[Hooks, List[Callable]] = Field({})
+    post_hooks: Dict[Hooks, List[Callable]] = Field({})
+    skip_constraint_creation: bool = Field(False)
+    skip_index_creation: bool = Field(False)
+    eager_fetch: bool = Field(False)
+    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.DEFAULT)
+    labels: Set[str] = Field(set())
+    type: str = Field("")
 
     if IS_PYDANTIC_V2:
 
         @field_validator("pre_hooks", "post_hooks", mode="before")
         @classmethod
         def normalize_hooks_pydantic_v2(cls, value: Any):
-            return cls.__validator_hooks(value)
+            return cls.__normalize_hooks(value)
 
         @field_validator("labels", mode="before")
         @classmethod
         def normalize_labels_pydantic_v2(cls, value: Any):
-            return cls.__validate_labels(value)
+            return cls.__normalize_labels(value)
 
     else:
 
         @validator("pre_hooks", "post_hooks", pre=True)
         def normalize_hooks_pydantic_v1(cls, value: Any):
-            return cls.__validator_hooks(value)
+            return cls.__normalize_hooks(value)
 
         @validator("labels", pre=True)
         def normalize_labels_pydantic_v1(cls, value: Any):
-            return cls.__validate_labels(value)
+            return cls.__normalize_labels(value)
 
     @classmethod
-    def __validator_hooks(cls, value: Any) -> Dict[str, List[Callable]]:
+    def __normalize_hooks(cls, value: Any) -> Dict[str, List[Callable]]:
         if not isinstance(value, dict):
             raise ValueError("Hooks must be a dictionary")
 
@@ -94,7 +94,7 @@ class ModelConfigurationValidator(BaseModel):
         return normalized
 
     @classmethod
-    def __validate_labels(cls, value: Any) -> Set[str]:
+    def __normalize_labels(cls, value: Any) -> Set[str]:
         if not isinstance(value, (str, list, set)):
             raise ValueError("Labels must be string|list|set")
 

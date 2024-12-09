@@ -1,12 +1,11 @@
 from copy import deepcopy
-from typing import Any, Dict
+from typing import Any, Dict, List, Set, cast
 
 from pydantic import BaseModel, PrivateAttr
 
 from pyneo4j_ogm.options.model_options import ModelConfigurationValidator
 from pyneo4j_ogm.pydantic import get_model_dump
 from pyneo4j_ogm.registry import Registry
-from pyneo4j_ogm.types.graph import EagerFetchStrategy
 
 
 class ModelBase(BaseModel):
@@ -21,25 +20,16 @@ class ModelBase(BaseModel):
         super().__init_subclass__(**kwargs)
         cls._registry = Registry()
 
-        # Get parent config
-        parent_config = getattr(
-            super(cls, cls),
-            "ogm_config",
-            get_model_dump(
-                ModelConfigurationValidator(
-                    pre_hooks={},
-                    post_hooks={},
-                    skip_constraint_creation=False,
-                    skip_index_creation=False,
-                    eager_fetch=False,
-                    eager_fetch_strategy=EagerFetchStrategy.DEFAULT,
-                    labels=set(),
-                    type="",
-                )
-            ),
+        parent_config = ModelConfigurationValidator(
+            **getattr(
+                super(cls, cls),
+                "ogm_config",
+                {},
+            )
         )
+        model_config = ModelConfigurationValidator(**getattr(cls, "ogm_config", {}))
 
-        merged_config = cls.__merge_config(parent_config, getattr(cls, "ogm_config", {}))
+        merged_config = cls.__merge_config(get_model_dump(parent_config), get_model_dump(model_config))
         setattr(cls, "ogm_config", get_model_dump(ModelConfigurationValidator(**merged_config)))
 
     @classmethod
@@ -51,12 +41,14 @@ class ModelBase(BaseModel):
                 # We are handling pre/post hooks, so we merge all the hooks defined
                 merged_config[key] = cls.__merge_config(merged_config[key], value)
             elif isinstance(value, list):
-                # We either deal with sets of hook functions or labels
-                # Regardless, we merge them together instead of replacing them
+                # We deal with sets of hook functions
                 if key not in merged_config:
                     merged_config[key] = []
 
-                merged_config[key].append(*value)
+                cast(List, merged_config[key]).extend(value)
+            elif isinstance(value, set):
+                # We are dealing with labels, so merge them to allow for label inheritance
+                merged_config[key] = cast(Set, merged_config[key]).union(value)
             else:
                 merged_config[key] = value
 
