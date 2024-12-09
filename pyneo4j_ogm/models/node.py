@@ -22,7 +22,9 @@ class NodeModel(ModelBase):
         custom_labels = model_config.labels.difference(parent_labels)
 
         if "labels" not in cls.ogm_config:
-            raise ValueError("labels property not initialized")
+            # We should never reach this line since the config should always be set in
+            # the base class when initializing
+            raise ValueError("labels property not initialized")  # pragma: no cover
 
         if len(custom_labels) == 0:
 
