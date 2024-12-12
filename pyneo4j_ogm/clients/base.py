@@ -220,7 +220,7 @@ class Pyneo4jClient(ABC):
         logger.debug("Checking for compatible database version")
         await self._check_database_version()
 
-        logger.info("%s connected to database", uri)
+        logger.info("Connected to %s", uri)
         return self
 
     @ensure_initialized
@@ -482,7 +482,7 @@ class Pyneo4jClient(ABC):
             await self.__begin_transaction()
 
         try:
-            logger.info("%s with parameters %s", query, parameters)
+            logger.info("'%s' with parameters %s", query, parameters)
             query_result = await cast(AsyncTransaction, self._transaction).run(cast(LiteralString, query), parameters)
 
             logger.debug("Parsing query results")
@@ -499,7 +499,7 @@ class Pyneo4jClient(ABC):
                         raise ModelResolveError() from exc
 
             summary = await query_result.consume()
-            logger.info("Query %s finished after %dms", query, summary.result_available_after)
+            logger.info("Query finished after %dms", summary.result_available_after)
 
             if not self._using_batches:
                 # Again, don't commit anything to the database when batching is enabled
@@ -549,7 +549,7 @@ class Pyneo4jClient(ABC):
             session = cast(AsyncDriver, self._driver).session()
             logger.debug("Session %s acquired", session)
 
-            logger.info("%s with parameters %s", query, parameters)
+            logger.info("'%s' with parameters %s", query, parameters)
             query_result = await session.run(cast(LiteralString, query), parameters)
 
             logger.debug("Parsing query results")
@@ -566,7 +566,7 @@ class Pyneo4jClient(ABC):
                         raise ModelResolveError() from exc
 
             summary = await query_result.consume()
-            logger.info("Query %s finished after %dms", query, summary.result_available_after)
+            logger.info("Query finished after %dms", summary.result_available_after)
 
             logger.debug("Closing session %s", session)
             await session.close()

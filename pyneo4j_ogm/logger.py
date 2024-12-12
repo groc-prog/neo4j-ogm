@@ -6,10 +6,10 @@ enable_logging = int(from_env(EnvVariable.LOGGING_ENABLED, 1))
 log_level = int(from_env(EnvVariable.LOGLEVEL, logging.WARNING))
 
 logger = logging.getLogger("pyneo4j-ogm")
-logger.setLevel(logging.WARNING)
+logger.setLevel(log_level)
 
 handler = logging.StreamHandler()
-handler.setLevel(logging.WARNING)
+handler.setLevel(log_level)
 
 formatter = logging.Formatter(
     fmt="[%(asctime)s] [%(name)s:%(filename)s:%(lineno)d] [%(levelname)s] %(message)s",
