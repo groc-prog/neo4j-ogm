@@ -1,16 +1,49 @@
+from functools import wraps
 from typing import List, Optional, Self, Union, cast
 
 from neo4j import AsyncDriver
 
-from pyneo4j_ogm.clients.base import (
-    Pyneo4jClient,
-    ensure_initialized,
-    ensure_neo4j_version,
+from pyneo4j_ogm.clients.base import Pyneo4jClient, ensure_initialized
+from pyneo4j_ogm.exceptions import (
+    ClientNotInitializedError,
+    UnsupportedDatabaseVersionError,
 )
-from pyneo4j_ogm.exceptions import UnsupportedDatabaseVersionError
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.types.graph import EntityType
+
+
+def ensure_neo4j_version(major_version: int, minor_version: int, patch_version: int):
+    """
+    Ensures that the connected Neo4j database has a minimum version. Only usable for
+    `Neo4jClient`.
+
+    Args:
+        major_version (int): The lowest allowed major version.
+        minor_version (int): The lowest allowed minor version.
+        patch_version (int): The lowest allowed patch version.
+    """
+
+    def decorator(func):
+
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            logger.debug("Ensuring client has minimum required version")
+            version = cast(Optional[str], getattr(self, "_version", None))
+            if version is None:
+                raise ClientNotInitializedError()
+
+            major, minor, patch = [int(semver_partial) for semver_partial in version.split(".")]
+
+            if major < major_version or minor < minor_version or patch < patch_version:
+                raise UnsupportedDatabaseVersionError()
+
+            result = await func(self, *args, **kwargs)
+            return result
+
+        return wrapper
+
+    return decorator
 
 
 class Neo4jClient(Pyneo4jClient):

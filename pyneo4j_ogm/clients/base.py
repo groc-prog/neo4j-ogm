@@ -27,7 +27,6 @@ from pyneo4j_ogm.exceptions import (
     ModelResolveError,
     NoTransactionInProgress,
     TransactionInProgress,
-    UnsupportedDatabaseVersionError,
 )
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.models.node import NodeModel
@@ -65,39 +64,6 @@ def initialize_models_after(func):
         return await func(self, *args, **kwargs)
 
     return wrapper
-
-
-def ensure_neo4j_version(major_version: int, minor_version: int, patch_version: int):
-    """
-    Ensures that the connected Neo4j database has a minimum version. Only usable for
-    `Neo4jClient`.
-
-    Args:
-        major_version (int): The lowest allowed major version.
-        minor_version (int): The lowest allowed minor version.
-        patch_version (int): The lowest allowed patch version.
-    """
-
-    def decorator(func):
-
-        @wraps(func)
-        async def wrapper(self, *args, **kwargs):
-            logger.debug("Ensuring client has minimum required version")
-            version = cast(Optional[str], getattr(self, "_version", None))
-            if version is None:
-                raise ClientNotInitializedError()
-
-            major, minor, patch = [int(semver_partial) for semver_partial in version.split(".")]
-
-            if major < major_version or minor < minor_version or patch < patch_version:
-                raise UnsupportedDatabaseVersionError()
-
-            result = await func(self, *args, **kwargs)
-            return result
-
-        return wrapper
-
-    return decorator
 
 
 def ensure_initialized(func):
@@ -532,6 +498,9 @@ class Pyneo4jClient(ABC):
                     if raise_on_resolve_exc:
                         raise ModelResolveError() from exc
 
+            summary = await query_result.consume()
+            logger.info("Query %s finished after %dms", query, summary.result_available_after)
+
             if not self._using_batches:
                 # Again, don't commit anything to the database when batching is enabled
                 await self.__commit_transaction()
@@ -595,6 +564,9 @@ class Pyneo4jClient(ABC):
                     logger.warning("Resolving models failed with %s", exc)
                     if raise_on_resolve_exc:
                         raise ModelResolveError() from exc
+
+            summary = await query_result.consume()
+            logger.info("Query %s finished after %dms", query, summary.result_available_after)
 
             logger.debug("Closing session %s", session)
             await session.close()
