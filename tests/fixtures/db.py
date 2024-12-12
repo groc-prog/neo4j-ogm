@@ -67,11 +67,13 @@ async def neo4j_session():
     session = driver.session()
 
     # Clear all nodes created during the test
-    await session.run("MATCH (n) DETACH DELETE n")
+    query_result = await session.run("MATCH (n) DETACH DELETE n")
+    await query_result.consume()
 
     # Drop all constraints
     query_result = await session.run("SHOW CONSTRAINTS")
     constraints = [list(result.values()) async for result in query_result]
+    await query_result.consume()
 
     for constraint in constraints:
         await session.run(f"DROP CONSTRAINT {constraint[1]}")  # type: ignore
@@ -79,6 +81,7 @@ async def neo4j_session():
     # Drop all indexes
     query_result = await session.run("SHOW INDEXES")
     indexes = [list(result.values()) async for result in query_result]
+    await query_result.consume()
 
     for index in indexes:
         await session.run((f"DROP INDEX {index[1]}"))  # type: ignore
@@ -107,6 +110,7 @@ async def memgraph_session():
     # Drop all constraints
     query_result = await session.run("SHOW CONSTRAINT INFO")
     constraints = [list(result.values()) async for result in query_result]
+    await query_result.consume()
 
     for constraint in constraints:
         match constraint[0]:
@@ -128,6 +132,7 @@ async def memgraph_session():
     # Drop all indexes
     query_result = await session.run("SHOW INDEX INFO")
     indexes = [list(result.values()) async for result in query_result]
+    await query_result.consume()
 
     for index in indexes:
         for index in indexes:

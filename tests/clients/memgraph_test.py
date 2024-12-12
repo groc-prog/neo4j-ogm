@@ -108,11 +108,13 @@ class TestMemgraphConstraints:
 
         query = await session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
         assert len(constraints) == 4
 
     async def _check_no_constraints(self, session: neo4j.AsyncSession):
         query = await session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
         assert len(constraints) == 0
 
     async def test_drop_constraints(self, memgraph_session, memgraph_client):
@@ -142,6 +144,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "exists"
@@ -154,6 +157,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "exists"
@@ -174,6 +178,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "unique"
@@ -186,6 +191,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "unique"
@@ -203,6 +209,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -216,6 +223,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -233,6 +241,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -246,6 +255,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -263,6 +273,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -276,6 +287,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -293,6 +305,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -306,6 +319,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -323,6 +337,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -336,6 +351,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -353,6 +369,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -366,6 +383,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -383,6 +401,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -396,6 +415,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -413,6 +433,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -426,6 +447,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -443,6 +465,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -456,6 +479,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -473,6 +497,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -486,6 +511,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -503,6 +529,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -516,6 +543,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -533,6 +561,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -546,6 +575,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -563,6 +593,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "data_type"
@@ -576,6 +607,7 @@ class TestMemgraphConstraints:
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 2
         assert constraints[0][0] == "data_type"
@@ -598,11 +630,13 @@ class TestMemgraphIndexes:
 
         query = await session.run("SHOW INDEX INFO")
         constraints = await query.values()
+        await query.consume()
         assert len(constraints) == 5
 
     async def _check_no_indexes(self, session: neo4j.AsyncSession):
         query = await session.run("SHOW INDEX INFO")
         constraints = await query.values()
+        await query.consume()
         assert len(constraints) == 0
 
     async def test_drop_indexes(self, memgraph_session, memgraph_client):
@@ -626,6 +660,7 @@ class TestMemgraphIndexes:
 
         query = await memgraph_session.run("SHOW INDEX INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "label"
@@ -638,6 +673,7 @@ class TestMemgraphIndexes:
 
         query = await memgraph_session.run("SHOW INDEX INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "edge-type"
@@ -655,6 +691,7 @@ class TestMemgraphIndexes:
 
         query = await memgraph_session.run("SHOW INDEX INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "label+property"
@@ -667,6 +704,7 @@ class TestMemgraphIndexes:
 
         query = await memgraph_session.run("SHOW INDEX INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "edge-type+property"
@@ -679,6 +717,7 @@ class TestMemgraphIndexes:
 
         query = await memgraph_session.run("SHOW INDEX INFO")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][0] == "point"
@@ -696,12 +735,14 @@ class TestMemgraphDatabaseInteractions:
         await memgraph_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
         query = await memgraph_session.run("MATCH (n) RETURN n")
         result = await query.values()
+        await query.consume()
         assert len(result) == 4
 
         await memgraph_client.drop_nodes()
 
         query = await memgraph_session.run("MATCH (n) RETURN n")
         result = await query.values()
+        await query.consume()
         assert len(result) == 0
 
     async def test_batching(self, memgraph_client, memgraph_session):
@@ -712,10 +753,12 @@ class TestMemgraphDatabaseInteractions:
 
             query = await memgraph_session.run("MATCH (n) RETURN n")
             result = await query.values()
+            await query.consume()
             assert len(result) == 0
 
         query = await memgraph_session.run("MATCH (n) RETURN n")
         result = await query.values()
+        await query.consume()
         assert len(result) == 2
 
     async def test_batching_query(self, memgraph_client, memgraph_session):

@@ -10,7 +10,10 @@
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
-      "justMyCode": false
+      "justMyCode": true,
+      "env": {
+        "PYNEO4J_LOGLEVEL": "20"
+      }
     }
   ]
 }

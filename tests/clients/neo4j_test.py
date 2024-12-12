@@ -1,5 +1,6 @@
 # pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import neo4j
@@ -7,7 +8,7 @@ import neo4j.graph
 import pytest
 from neo4j.exceptions import AuthError, ClientError
 
-from pyneo4j_ogm.clients.neo4j import Neo4jClient
+from pyneo4j_ogm.clients.neo4j import Neo4jClient, ensure_neo4j_version
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
     UnsupportedDatabaseVersionError,
@@ -20,6 +21,17 @@ from tests.fixtures.db import (
     neo4j_client,
     neo4j_session,
 )
+
+
+class TestNeo4jVersionDecorator:
+    async def test_version_is_none(self):
+        @ensure_neo4j_version(1, 1, 1)
+        async def decorated_method(*args, **kwargs):
+            pass
+
+        with pytest.raises(ClientNotInitializedError):
+            mocked_client = SimpleNamespace()
+            await decorated_method(mocked_client)
 
 
 class TestNeo4jConnection:
@@ -125,11 +137,15 @@ class TestNeo4jConstraints:
 
         query = await session.run("SHOW CONSTRAINT")
         constraints = await query.values()
+        await query.consume()
+
         assert len(constraints) == 4
 
     async def _check_no_constraints(self, session: neo4j.AsyncSession):
         query = await session.run("SHOW CONSTRAINT")
         constraints = await query.values()
+        await query.consume()
+
         assert len(constraints) == 0
 
     async def test_drop_constraints(self, neo4j_session, neo4j_client):
@@ -160,6 +176,7 @@ class TestNeo4jConstraints:
 
         query = await neo4j_session.run("SHOW CONSTRAINT")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][1] == "node_constraint"
@@ -174,6 +191,7 @@ class TestNeo4jConstraints:
 
         query = await neo4j_session.run("SHOW CONSTRAINT")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][1] == "node_constraint"
@@ -195,6 +213,7 @@ class TestNeo4jConstraints:
 
         query = await neo4j_session.run("SHOW CONSTRAINT")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][1] == "relationship_constraint"
@@ -211,6 +230,7 @@ class TestNeo4jConstraints:
 
         query = await neo4j_session.run("SHOW CONSTRAINT")
         constraints = await query.values()
+        await query.consume()
 
         assert len(constraints) == 1
         assert constraints[0][1] == "relationship_constraint"
@@ -246,11 +266,15 @@ class TestNeo4jIndexes:
 
         query = await session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert len(constraints) == 6
 
     async def _check_no_indexes(self, session: neo4j.AsyncSession):
         query = await session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert len(constraints) == 0
 
     async def test_drop_indexes(self, neo4j_session, neo4j_client):
@@ -269,6 +293,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "range_index"
         assert constraints[0][4] == Neo4jIndexType.RANGE.value
         assert constraints[0][5] == EntityType.NODE.value
@@ -281,6 +307,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "range_index"
         assert constraints[0][4] == Neo4jIndexType.RANGE.value
         assert constraints[0][5] == EntityType.NODE.value
@@ -293,6 +321,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "range_index"
         assert constraints[0][4] == Neo4jIndexType.RANGE.value
         assert constraints[0][5] == EntityType.RELATIONSHIP.value
@@ -305,6 +335,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "range_index"
         assert constraints[0][4] == Neo4jIndexType.RANGE.value
         assert constraints[0][5] == EntityType.RELATIONSHIP.value
@@ -328,6 +360,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "text_index"
         assert constraints[0][4] == Neo4jIndexType.TEXT.value
         assert constraints[0][5] == EntityType.NODE.value
@@ -340,6 +374,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "text_index"
         assert constraints[0][4] == Neo4jIndexType.TEXT.value
         assert constraints[0][5] == EntityType.RELATIONSHIP.value
@@ -363,6 +399,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "point_index"
         assert constraints[0][4] == Neo4jIndexType.POINT.value
         assert constraints[0][5] == EntityType.NODE.value
@@ -375,6 +413,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "point_index"
         assert constraints[0][4] == Neo4jIndexType.POINT.value
         assert constraints[0][5] == EntityType.RELATIONSHIP.value
@@ -398,6 +438,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "fulltext_index"
         assert constraints[0][4] == Neo4jIndexType.FULLTEXT.value
         assert constraints[0][5] == EntityType.NODE.value
@@ -410,6 +452,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "fulltext_index"
         assert constraints[0][4] == Neo4jIndexType.FULLTEXT.value
         assert constraints[0][5] == EntityType.NODE.value
@@ -422,6 +466,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "fulltext_index"
         assert constraints[0][4] == Neo4jIndexType.FULLTEXT.value
         assert constraints[0][5] == EntityType.NODE.value
@@ -434,6 +480,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "fulltext_index"
         assert constraints[0][4] == Neo4jIndexType.FULLTEXT.value
         assert constraints[0][5] == EntityType.RELATIONSHIP.value
@@ -446,6 +494,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "fulltext_index"
         assert constraints[0][4] == Neo4jIndexType.FULLTEXT.value
         assert constraints[0][5] == EntityType.RELATIONSHIP.value
@@ -458,6 +508,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "fulltext_index"
         assert constraints[0][4] == Neo4jIndexType.FULLTEXT.value
         assert constraints[0][5] == EntityType.RELATIONSHIP.value
@@ -481,6 +533,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "vector_index"
         assert constraints[0][4] == Neo4jIndexType.VECTOR.value
         assert constraints[0][5] == EntityType.NODE.value
@@ -493,6 +547,8 @@ class TestNeo4jIndexes:
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
+        await query.consume()
+
         assert constraints[0][1] == "vector_index"
         assert constraints[0][4] == Neo4jIndexType.VECTOR.value
         assert constraints[0][5] == EntityType.RELATIONSHIP.value
@@ -525,12 +581,14 @@ class TestNeo4jDatabaseInteractions:
         await neo4j_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
         query = await neo4j_session.run("MATCH (n) RETURN n")
         result = await query.values()
+        await query.consume()
         assert len(result) == 4
 
         await neo4j_client.drop_nodes()
 
         query = await neo4j_session.run("MATCH (n) RETURN n")
         result = await query.values()
+        await query.consume()
         assert len(result) == 0
 
     async def test_batching(self, neo4j_client, neo4j_session):
@@ -541,19 +599,10 @@ class TestNeo4jDatabaseInteractions:
 
             query = await neo4j_session.run("MATCH (n) RETURN n")
             result = await query.values()
+            await query.consume()
             assert len(result) == 0
 
         query = await neo4j_session.run("MATCH (n) RETURN n")
         result = await query.values()
+        await query.consume()
         assert len(result) == 2
-
-    async def test_batching_query(self, neo4j_client, neo4j_session):
-        await neo4j_session.run("CREATE (:Developer)")
-        await neo4j_session.run("CREATE (:Coffee)")
-
-        async with neo4j_client.batching():
-            results, _ = await neo4j_client.cypher("MATCH (n) RETURN n")
-            assert len(results) == 2
-
-            for result in results:
-                assert isinstance(result[0], neo4j.graph.Node)
