@@ -74,27 +74,23 @@ class MemgraphClient(Pyneo4jClient):
         return self
 
     @ensure_initialized
-    async def existence_constraint(self, label: str, properties: Union[List[str], str]) -> Self:
+    async def existence_constraint(self, label: str, property_: str) -> Self:
         """
         Creates a new existence constraint for a node with a given label. Can only be used to create existence constraints
         on nodes.
 
         Args:
             label (str): The label on which the constraint will be created.
-            properties (Union[List[str], str]): The properties which should be affected by the constraint.
+            property_ (str): The property which should be affected by the constraint.
 
         Returns:
             Self: The client.
         """
         logger.info("Creating existence constraint on %s", label)
-        normalized_properties = [properties] if isinstance(properties, str) else properties
         node_pattern = QueryBuilder.node_pattern("n", label)
 
-        for property_ in normalized_properties:
-            logger.debug("Creating existence constraint for %s on property %s", label, property_)
-            await self.cypher(
-                f"CREATE CONSTRAINT ON {node_pattern} ASSERT EXISTS (n.{property_})", auto_committing=True
-            )
+        logger.debug("Creating existence constraint for %s on property %s", label, property_)
+        await self.cypher(f"CREATE CONSTRAINT ON {node_pattern} ASSERT EXISTS (n.{property_})", auto_committing=True)
 
         return self
 
@@ -125,16 +121,14 @@ class MemgraphClient(Pyneo4jClient):
         return self
 
     @ensure_initialized
-    async def data_type_constraint(
-        self, label: str, properties: Union[List[str], str], data_type: MemgraphDataType
-    ) -> Self:
+    async def data_type_constraint(self, label: str, property_: str, data_type: MemgraphDataType) -> Self:
         """
         Creates a new data type constraint for a node with a given label. Can only be used to create data type constraints
         on nodes.
 
         Args:
             label (str): The label on which the constraint will be created.
-            properties (Union[List[str], str]): The properties which should be affected by the constraint.
+            property_ (str): The property which should be affected by the constraint.
             data_type (MemgraphDataType): The data type to enforce.
 
         Raises:
@@ -144,21 +138,18 @@ class MemgraphClient(Pyneo4jClient):
             Self: The client.
         """
         logger.info("Creating data type constraint on %s for type %s", label, data_type.value)
-        normalized_properties = [properties] if isinstance(properties, str) else properties
-
         node_pattern = QueryBuilder.node_pattern("n", label)
 
-        for property_ in normalized_properties:
-            logger.debug("Creating data type constraint for %s on property %s", label, property_)
-            await self.cypher(
-                f"CREATE CONSTRAINT ON {node_pattern} ASSERT n.{property_} IS TYPED {data_type.value}",
-                auto_committing=True,
-            )
+        logger.debug("Creating data type constraint for %s on property %s", label, property_)
+        await self.cypher(
+            f"CREATE CONSTRAINT ON {node_pattern} ASSERT n.{property_} IS TYPED {data_type.value}",
+            auto_committing=True,
+        )
 
         return self
 
     @ensure_initialized
-    async def index(self, label_or_edge: str, entity_type: EntityType) -> Self:
+    async def entity_index(self, label_or_edge: str, entity_type: EntityType) -> Self:
         """
         Creates a label/edge index.
 
