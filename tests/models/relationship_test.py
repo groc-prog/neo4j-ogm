@@ -2,6 +2,7 @@
 
 
 from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.types.graph import EagerFetchStrategy
 
 
 class TestOGMConfiguration:
@@ -65,7 +66,14 @@ class TestOGMConfiguration:
 
     def test_primitive_config_options(self):
         class Likes(RelationshipModel):
-            ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
+            ogm_config = {
+                "skip_constraint_creation": True,
+                "skip_index_creation": True,
+                "eager_fetch": True,
+                "eager_fetch_strategy": EagerFetchStrategy.AS_SPLIT_QUERY,
+            }
 
         assert Likes.ogm_config["skip_constraint_creation"] is True  # type: ignore
         assert Likes.ogm_config["skip_index_creation"] is True  # type: ignore
+        assert Likes.ogm_config["eager_fetch"] is True  # type: ignore
+        assert Likes.ogm_config["eager_fetch_strategy"] == EagerFetchStrategy.AS_SPLIT_QUERY  # type: ignore
