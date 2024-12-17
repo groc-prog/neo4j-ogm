@@ -1,4 +1,3 @@
-import re
 from typing import ClassVar, Set, cast
 
 from pyneo4j_ogm.models.base import ModelBase
@@ -27,8 +26,6 @@ class NodeModel(ModelBase):
             raise ValueError("labels property not initialized")  # pragma: no cover
 
         if len(custom_labels) == 0:
-
-            auto_labels = re.findall(r"[A-Z][a-z]*|[A-Z]+(?=[A-Z][a-z]|$)", cls.__name__)
-            cast(Set[str], cls.ogm_config["labels"]).update(auto_labels)
+            cast(Set[str], cls.ogm_config["labels"]).update([cls.__name__])
         else:
             cls.ogm_config["labels"] = cast(Set[str], cls.ogm_config["labels"]).union(model_config.labels)
