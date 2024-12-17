@@ -53,15 +53,16 @@ def initialize_models_after(func):
 
     @wraps(func)
     async def wrapper(self, *args, **kwargs) -> None:
-        if getattr(self, "_driver", None) is not None:
-            initialize = cast(Optional[Callable], getattr(self, "_initialize_models", None))
+        result = await func(self, *args, **kwargs)
 
-            if initialize is None:
+        if await self.connected():
+            initialize_func = cast(Optional[Callable], getattr(self, "_initialize_models", None))
+            if initialize_func is None:
                 raise ValueError("Model initialization function not found")
 
-            await initialize()
+            await initialize_func()
 
-        return await func(self, *args, **kwargs)
+        return result
 
     return wrapper
 
@@ -283,7 +284,7 @@ class Pyneo4jClient(ABC):
             return await self.__with_implicit_transaction(query, query_parameters, resolve_models, raise_on_resolve_exc)
 
     @initialize_models_after
-    async def register_models(self, models: List[Union[Type[NodeModel], Type[RelationshipModel]]]) -> Self:
+    async def register_models(self, *args: Union[Type[NodeModel], Type[RelationshipModel]]) -> Self:
         """
         Registers the provided models with the client. Can be omitted if automatic index/constraint creation
         and resolving models in queries is not required.
@@ -298,7 +299,7 @@ class Pyneo4jClient(ABC):
         logger.debug("Registering models with client")
         original_count = len(self._models)
 
-        for model in models:
+        for model in args:
             if not issubclass(model, (NodeModel, RelationshipModel)):
                 continue
 
