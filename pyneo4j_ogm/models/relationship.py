@@ -1,7 +1,10 @@
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from pyneo4j_ogm.models.base import ModelBase
-from pyneo4j_ogm.options.model_options import RelationshipConfig
+from pyneo4j_ogm.options.model_options import (
+    ModelConfigurationValidator,
+    RelationshipConfig,
+)
 
 
 class RelationshipModel(ModelBase):
@@ -11,3 +14,14 @@ class RelationshipModel(ModelBase):
     """
 
     ogm_config: ClassVar[RelationshipConfig]
+
+    def __init_subclass__(cls, **kwargs):
+        model_config = ModelConfigurationValidator(**getattr(cls, "ogm_config", {}))
+        super().__init_subclass__(**kwargs)
+
+        parent_config = cast(RelationshipConfig, getattr(super(cls, cls), "ogm_config"))
+
+        # It does not make sense to merge relationship types when inheriting something so
+        # we just always use the name if not stated otherwise
+        if ("type" in parent_config and parent_config["type"] == model_config.type) or len(model_config.type) == 0:
+            cls.ogm_config["type"] = cls.__name__.upper()
