@@ -15,7 +15,7 @@ class TestOGMConfiguration:
         class DeveloperPerson(NodeModel):
             pass
 
-        assert DeveloperPerson.ogm_config["labels"] == set(["Developer", "Person"])  # type: ignore
+        assert DeveloperPerson.ogm_config["labels"] == set(["DeveloperPerson"])  # type: ignore
 
     def test_labels_inheritance(self):
         class Person(NodeModel):
