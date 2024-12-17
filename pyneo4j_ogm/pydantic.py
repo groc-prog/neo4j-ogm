@@ -1,13 +1,29 @@
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, List, Tuple, Type, Union
 
 from pydantic import VERSION, BaseModel
 
-from pyneo4j_ogm.options.field_options import MemgraphOptions, Neo4jOptions
+from pyneo4j_ogm.options.field_options import (
+    DataTypeConstraint,
+    EntityIndex,
+    ExistenceConstraint,
+    FullTextIndex,
+    PointIndex,
+    PropertyIndex,
+    RangeIndex,
+    TextIndex,
+    UniquenessConstraint,
+    VectorIndex,
+)
 
 IS_PYDANTIC_V2 = int(VERSION.split(".", 1)[0]) >= 2
 
 
-def get_field_options(field) -> Tuple[Optional[Neo4jOptions], Optional[MemgraphOptions]]:
+def get_field_options(
+    field,
+) -> Tuple[
+    List[Union[UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex]],
+    List[Union[UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, EntityIndex, PropertyIndex, PointIndex]],
+]:
     """
     Returns the defined options from a model field.
 
@@ -20,16 +36,42 @@ def get_field_options(field) -> Tuple[Optional[Neo4jOptions], Optional[MemgraphO
             `Neo4jOptions and MemgraphOptions` instances or `None` if no options have been defined.
     """
     if IS_PYDANTIC_V2:
-        neo4j_options = [annotated for annotated in field.metadata if isinstance(annotated, Neo4jOptions)]
-        memgraph_options = [annotated for annotated in field.metadata if isinstance(annotated, MemgraphOptions)]
+        neo4j_options = [
+            annotated
+            for annotated in field.metadata
+            if isinstance(
+                annotated, (UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex)
+            )
+        ]
+        memgraph_options = [
+            annotated
+            for annotated in field.metadata
+            if isinstance(
+                annotated,
+                (UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, EntityIndex, PropertyIndex, PointIndex),
+            )
+        ]
     else:
         metadata = getattr(field.outer_type_, "__metadata__", [])
-        neo4j_options = [annotated for annotated in metadata if isinstance(annotated, Neo4jOptions)]
-        memgraph_options = [annotated for annotated in metadata if isinstance(annotated, MemgraphOptions)]
+        neo4j_options = [
+            annotated
+            for annotated in metadata
+            if isinstance(
+                annotated, (UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex)
+            )
+        ]
+        memgraph_options = [
+            annotated
+            for annotated in metadata
+            if isinstance(
+                annotated,
+                (UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, EntityIndex, PropertyIndex, PointIndex),
+            )
+        ]
 
     return (
-        neo4j_options[0] if len(neo4j_options) > 0 else None,
-        memgraph_options[0] if len(memgraph_options) > 0 else None,
+        neo4j_options,
+        memgraph_options,
     )
 
 
