@@ -21,17 +21,6 @@ class RelationshipDirection(Enum):
     BOTH = 2
 
 
-class OptionStrategy(Enum):
-    """
-    Available strategies used when creating indexes/constraints for multi-label nodes.
-    """
-
-    ALL = 0
-    FIRST = 1
-    LAST = 2
-    SELECTED = 3
-
-
 class EagerFetchStrategy(Enum):
     """
     Available strategies used when eagerly fetching neighboring nodes.
