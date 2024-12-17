@@ -4,7 +4,7 @@ from pyneo4j_ogm.models.node import NodeModel
 from pyneo4j_ogm.types.graph import EagerFetchStrategy
 
 
-class TestConfig:
+class TestOGMConfiguration:
     def test_default_labels(self):
         class Developer(NodeModel):
             pass
@@ -24,8 +24,12 @@ class TestConfig:
         class Developer(Person):
             pass
 
+        class Worker(Person):
+            ogm_config = {"labels": {"HardWorking", "Human"}}
+
         assert Person.ogm_config["labels"] == set(["Person"])  # type: ignore
         assert Developer.ogm_config["labels"] == set(["Developer", "Person"])  # type: ignore
+        assert Worker.ogm_config["labels"] == set(["Person", "HardWorking", "Human"])  # type: ignore
 
     def test_labels_config(self):
         class Person(NodeModel):
