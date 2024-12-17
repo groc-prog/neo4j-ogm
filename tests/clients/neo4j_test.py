@@ -606,3 +606,69 @@ class TestNeo4jDatabaseInteractions:
         result = await query.values()
         await query.consume()
         assert len(result) == 2
+
+    async def test_cypher(self, neo4j_client, neo4j_session):
+        labels = ["Developer", "Coffee"]
+        result, keys = await neo4j_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})")
+
+        assert len(result) == 0
+        assert len(keys) == 0
+
+        query = await neo4j_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        assert len(result) == 2
+        assert len(result[0][0].labels) == 1
+        assert len(result[0][0].labels) == 1
+        assert list(result[1][0].labels)[0] in labels
+        assert list(result[1][0].labels)[0] in labels
+
+    async def test_cypher_with_params(self, neo4j_client, neo4j_session):
+        result, keys = await neo4j_client.cypher("CREATE (n:Person) SET n.age = $age", {"age": 24})
+
+        assert len(result) == 0
+        assert len(keys) == 0
+
+        query = await neo4j_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        assert len(result) == 1
+        assert len(result[0][0].labels) == 1
+        assert list(result[0][0].labels)[0] == "Person"
+        assert dict(result[0][0])["age"] == 24
+
+    async def test_cypher_auto_committing(self, neo4j_client, neo4j_session):
+        labels = ["Developer", "Coffee"]
+        result, keys = await neo4j_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})", auto_committing=True)
+
+        assert len(result) == 0
+        assert len(keys) == 0
+
+        query = await neo4j_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        assert len(result) == 2
+        assert len(result[0][0].labels) == 1
+        assert len(result[0][0].labels) == 1
+        assert list(result[1][0].labels)[0] in labels
+        assert list(result[1][0].labels)[0] in labels
+
+    async def test_cypher_with_params_auto_committing(self, neo4j_client, neo4j_session):
+        result, keys = await neo4j_client.cypher(
+            "CREATE (n:Person) SET n.age = $age", {"age": 24}, auto_committing=True
+        )
+
+        assert len(result) == 0
+        assert len(keys) == 0
+
+        query = await neo4j_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        assert len(result) == 1
+        assert len(result[0][0].labels) == 1
+        assert list(result[0][0].labels)[0] == "Person"
+        assert dict(result[0][0])["age"] == 24

@@ -730,7 +730,7 @@ class TestMemgraphIndexes:
         assert memgraph_client == return_value
 
 
-class TestMemgraphDatabaseInteractions:
+class TestMemgraphQueries:
     async def test_drop_nodes(self, memgraph_client, memgraph_session):
         await memgraph_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
         query = await memgraph_session.run("MATCH (n) RETURN n")
@@ -771,3 +771,69 @@ class TestMemgraphDatabaseInteractions:
 
             for result in results:
                 assert isinstance(result[0], neo4j.graph.Node)
+
+    async def test_cypher(self, memgraph_client, memgraph_session):
+        labels = ["Developer", "Coffee"]
+        result, keys = await memgraph_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})")
+
+        assert len(result) == 0
+        assert len(keys) == 0
+
+        query = await memgraph_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        assert len(result) == 2
+        assert len(result[0][0].labels) == 1
+        assert len(result[0][0].labels) == 1
+        assert list(result[1][0].labels)[0] in labels
+        assert list(result[1][0].labels)[0] in labels
+
+    async def test_cypher_with_params(self, memgraph_client, memgraph_session):
+        result, keys = await memgraph_client.cypher("CREATE (n:Person) SET n.age = $age", {"age": 24})
+
+        assert len(result) == 0
+        assert len(keys) == 0
+
+        query = await memgraph_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        assert len(result) == 1
+        assert len(result[0][0].labels) == 1
+        assert list(result[0][0].labels)[0] == "Person"
+        assert dict(result[0][0])["age"] == 24
+
+    async def test_cypher_auto_committing(self, memgraph_client, memgraph_session):
+        labels = ["Developer", "Coffee"]
+        result, keys = await memgraph_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})", auto_committing=True)
+
+        assert len(result) == 0
+        assert len(keys) == 0
+
+        query = await memgraph_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        assert len(result) == 2
+        assert len(result[0][0].labels) == 1
+        assert len(result[0][0].labels) == 1
+        assert list(result[1][0].labels)[0] in labels
+        assert list(result[1][0].labels)[0] in labels
+
+    async def test_cypher_with_params_auto_committing(self, memgraph_client, memgraph_session):
+        result, keys = await memgraph_client.cypher(
+            "CREATE (n:Person) SET n.age = $age", {"age": 24}, auto_committing=True
+        )
+
+        assert len(result) == 0
+        assert len(keys) == 0
+
+        query = await memgraph_session.run("MATCH (n) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        assert len(result) == 1
+        assert len(result[0][0].labels) == 1
+        assert list(result[0][0].labels)[0] == "Person"
+        assert dict(result[0][0])["age"] == 24
