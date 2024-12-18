@@ -2,7 +2,6 @@ import threading
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Generator, Optional, Set, cast
 
-from pyneo4j_ogm.exceptions import InvalidClientError
 from pyneo4j_ogm.logger import logger
 
 if TYPE_CHECKING:
@@ -47,6 +46,9 @@ class Registry:
 
         Args:
             client (Pyneo4jClient): The client to register.
+
+        Raises:
+            ValueError: If a invalid client is provided.
         """
         from pyneo4j_ogm.clients.base import Pyneo4jClient
 
@@ -54,7 +56,7 @@ class Registry:
         registered_clients = cast(Set[Pyneo4jClient], getattr(self._thread_ctx, "clients"))
 
         if registered_clients is None or not isinstance(client, Pyneo4jClient):
-            raise InvalidClientError()
+            raise ValueError("Client must be a instance of `Pyneo4jClient`")
 
         registered_clients.add(client)
 
@@ -98,8 +100,7 @@ class Registry:
             client (Optional[Pyneo4jClient]): The client to set as active or `None`.
 
         Raises:
-            InvalidClientError: If `client` is not an instance of `Pyneo4jClient` or not registered
-                yet.
+            ValueError: If `client` is not an instance of `Pyneo4jClient`.
         """
         from pyneo4j_ogm.clients.base import Pyneo4jClient
 
@@ -107,7 +108,7 @@ class Registry:
             not isinstance(client, Pyneo4jClient)
             or client not in cast(Set[Pyneo4jClient], getattr(self._thread_ctx, "clients", set()))
         ):
-            raise InvalidClientError()
+            raise ValueError("Client must be a instance of `Pyneo4jClient`")
 
         setattr(self._thread_ctx, "active_client", client)
 
@@ -122,7 +123,7 @@ def with_client(client: Pyneo4jClient) -> Generator[Pyneo4jClient, Any, None]:
     `with` block. When the context exits, the active client is reverted to its
     previous value.
 
-    The provided client must be registered prior to using it, otherwise a `InvalidClientError`
+    The provided client must be registered prior to using it, otherwise a `ValueError`
     is raised.
 
     Args:

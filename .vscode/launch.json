@@ -9,7 +9,7 @@
       "type": "debugpy",
       "request": "launch",
       "program": "${file}",
-      "console": "integratedTerminal",
+      "console": "internalConsole",
       "justMyCode": true,
       "env": {
         "PYNEO4J_LOGLEVEL": "20"

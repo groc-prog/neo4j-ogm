@@ -13,15 +13,6 @@ class NoClientFoundError(Pyneo4jError):
         super().__init__("No active client found", *args)
 
 
-class InvalidClientError(Pyneo4jError):
-    """
-    Invalid client was provided.
-    """
-
-    def __init__(self, *args: object) -> None:
-        super().__init__("Client must be a registered instance of `Pyneo4jClient`", *args)
-
-
 class ClientNotInitializedError(Pyneo4jError):
     """
     Raised if a client method is called without initializing the client first.
