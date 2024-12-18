@@ -1,7 +1,6 @@
 from typing import Literal, Union
 
 Hooks = Union[
-    str,
     Literal["create"],
     Literal["update"],
     Literal["delete"],
@@ -15,4 +14,5 @@ Hooks = Union[
     Literal["count"],
     Literal["start_node"],
     Literal["end_node"],
+    str,
 ]
