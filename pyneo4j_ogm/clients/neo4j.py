@@ -115,7 +115,7 @@ class Neo4jClient(Pyneo4jClient):
         self,
         name: str,
         entity_type: EntityType,
-        labels_or_type: str,
+        label_or_type: str,
         properties: Union[List[str], str],
         raise_on_existing: bool = False,
     ) -> Self:
@@ -127,7 +127,7 @@ class Neo4jClient(Pyneo4jClient):
         Args:
             name (str): The name of the constraint.
             entity_type (EntityType): The type of graph entity for which the constraint will be created.
-            labels_or_type (str): When creating a constraint for a node, the label on which the constraint will be created.
+            label_or_type (str): When creating a constraint for a node, the label on which the constraint will be created.
                 In case of a relationship, the relationship type.
             properties (Union[List[str], str]): The properties which should be affected by the constraint.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate constraints.
@@ -136,22 +136,22 @@ class Neo4jClient(Pyneo4jClient):
         Returns:
             Self: The client.
         """
-        logger.info("Creating uniqueness constraint %s on %s", name, labels_or_type)
+        logger.info("Creating uniqueness constraint %s on %s", name, label_or_type)
         normalized_properties = [properties] if isinstance(properties, str) else properties
 
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
 
         if len(normalized_properties) == 1:
             properties_pattern = f"e.{normalized_properties[0]}"
         else:
             properties_pattern = f"({', '.join([f'e.{property_}' for property_ in normalized_properties])})"
 
-        logger.debug("Creating uniqueness constraint for %s on properties %s", labels_or_type, properties_pattern)
+        logger.debug("Creating uniqueness constraint for %s on properties %s", label_or_type, properties_pattern)
         await self.cypher(
             f"CREATE CONSTRAINT {name}{existence_pattern} FOR {entity_pattern} REQUIRE {properties_pattern} IS UNIQUE"
         )
@@ -162,8 +162,8 @@ class Neo4jClient(Pyneo4jClient):
     async def range_index(
         self,
         name: str,
-        labels_or_type: str,
         entity_type: EntityType,
+        label_or_type: str,
         properties: Union[List[str], str],
         raise_on_existing: bool = False,
     ) -> Self:
@@ -175,7 +175,7 @@ class Neo4jClient(Pyneo4jClient):
         Args:
             name (str): The name of the index.
             entity_type (EntityType): The type of graph entity for which the index will be created.
-            labels_or_type (str): When creating a index for a node, the label on which the index will be created.
+            label_or_type (str): When creating a index for a node, the label on which the index will be created.
                 In case of a relationship, the relationship type.
             properties (Union[List[str], str]): The properties which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
@@ -184,18 +184,18 @@ class Neo4jClient(Pyneo4jClient):
         Returns:
             Self: The client.
         """
-        logger.info("Creating range index %s for %s", name, labels_or_type)
+        logger.info("Creating range index %s for %s", name, label_or_type)
         normalized_properties = [properties] if isinstance(properties, str) else properties
 
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
         properties_pattern = ", ".join(f"e.{property_}" for property_ in normalized_properties)
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
 
-        logger.debug("Creating range index for %s on properties %s", labels_or_type, properties_pattern)
+        logger.debug("Creating range index for %s on properties %s", label_or_type, properties_pattern)
         await self.cypher(f"CREATE INDEX {name}{existence_pattern} FOR {entity_pattern} ON ({properties_pattern})")
 
         return self
@@ -204,8 +204,8 @@ class Neo4jClient(Pyneo4jClient):
     async def text_index(
         self,
         name: str,
-        labels_or_type: str,
         entity_type: EntityType,
+        label_or_type: str,
         property_: str,
         raise_on_existing: bool = False,
     ) -> Self:
@@ -217,7 +217,7 @@ class Neo4jClient(Pyneo4jClient):
         Args:
             name (str): The name of the index.
             entity_type (EntityType): The type of graph entity for which the index will be created.
-            labels_or_type (str): When creating a index for a node, the label on which the index will be created.
+            label_or_type (str): When creating a index for a node, the label on which the index will be created.
                 In case of a relationship, the relationship type.
             property_ (str): The property which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
@@ -226,15 +226,15 @@ class Neo4jClient(Pyneo4jClient):
         Returns:
             Self: The client.
         """
-        logger.info("Creating text index %s for %s", name, labels_or_type)
+        logger.info("Creating text index %s for %s", name, label_or_type)
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
 
-        logger.debug("Creating text index for %s on property %s", labels_or_type, property_)
+        logger.debug("Creating text index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE TEXT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
 
         return self
@@ -243,8 +243,8 @@ class Neo4jClient(Pyneo4jClient):
     async def point_index(
         self,
         name: str,
-        labels_or_type: str,
         entity_type: EntityType,
+        label_or_type: str,
         property_: str,
         raise_on_existing: bool = False,
     ) -> Self:
@@ -256,7 +256,7 @@ class Neo4jClient(Pyneo4jClient):
         Args:
             name (str): The name of the index.
             entity_type (EntityType): The type of graph entity for which the index will be created.
-            labels_or_type (str): When creating a index for a node, the label on which the index will be created.
+            label_or_type (str): When creating a index for a node, the label on which the index will be created.
                 In case of a relationship, the relationship type.
             property_ (str): The property which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
@@ -265,15 +265,15 @@ class Neo4jClient(Pyneo4jClient):
         Returns:
             Self: The client.
         """
-        logger.info("Creating point index %s for %s", name, labels_or_type)
+        logger.info("Creating point index %s for %s", name, label_or_type)
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
 
-        logger.debug("Creating point index for %s on property %s", labels_or_type, property_)
+        logger.debug("Creating point index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE POINT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
 
         return self
@@ -282,8 +282,8 @@ class Neo4jClient(Pyneo4jClient):
     async def fulltext_index(
         self,
         name: str,
-        labels_or_types: Union[List[str], str],
         entity_type: EntityType,
+        labels_or_types: Union[List[str], str],
         properties: Union[List[str], str],
         raise_on_existing: bool = False,
     ) -> Self:
@@ -327,8 +327,8 @@ class Neo4jClient(Pyneo4jClient):
     async def vector_index(
         self,
         name: str,
-        labels_or_type: str,
         entity_type: EntityType,
+        label_or_type: str,
         property_: str,
         raise_on_existing: bool = False,
     ) -> Self:
@@ -340,7 +340,7 @@ class Neo4jClient(Pyneo4jClient):
         Args:
             name (str): The name of the index.
             entity_type (EntityType): The type of graph entity for which the index will be created.
-            labels_or_type (str): When creating a index for a node, the label on which the index will be created.
+            label_or_type (str): When creating a index for a node, the label on which the index will be created.
                 In case of a relationship, the relationship type.
             property_ (str): The property which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
@@ -349,15 +349,15 @@ class Neo4jClient(Pyneo4jClient):
         Returns:
             Self: The client.
         """
-        logger.info("Creating vector index %s for %s", name, labels_or_type)
+        logger.info("Creating vector index %s for %s", name, label_or_type)
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", labels_or_type)
+            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
 
-        logger.debug("Creating vector index for %s on property %s", labels_or_type, property_)
+        logger.debug("Creating vector index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE VECTOR INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
 
         return self
@@ -376,6 +376,8 @@ class Neo4jClient(Pyneo4jClient):
     @ensure_initialized
     async def _initialize_models(self) -> None:
         for model in self._models:
+            entity_type = EntityType.NODE if issubclass(model, NodeModel) else EntityType.RELATIONSHIP
+
             if model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation:
                 logger.debug("Constraint and index creation disabled for model %s, skipping", model.__name__)
                 continue
@@ -387,6 +389,53 @@ class Neo4jClient(Pyneo4jClient):
             for field_name, field in get_model_fields(model).items():
                 options, _ = get_field_options(field)
                 self.__generate_options_mapping(model, field_name, options, mapping)
+
+            for index_or_constraint_type, mapped_options in mapping.items():
+                for mapped_option in mapped_options.values():
+                    joined_property_str = "_".join(mapped_option["properties"])
+
+                    if index_or_constraint_type == UniquenessConstraint:
+                        await self.uniqueness_constraint(
+                            f"CT_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            entity_type,
+                            mapped_option["labels_or_type"][0],
+                            mapped_option["properties"],
+                        )
+                    elif index_or_constraint_type == RangeIndex:
+                        await self.range_index(
+                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            entity_type,
+                            mapped_option["labels_or_type"][0],
+                            mapped_option["properties"],
+                        )
+                    elif index_or_constraint_type == TextIndex:
+                        await self.text_index(
+                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            entity_type,
+                            mapped_option["labels_or_type"][0],
+                            mapped_option["properties"][0],
+                        )
+                    elif index_or_constraint_type == FullTextIndex:
+                        await self.fulltext_index(
+                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            entity_type,
+                            mapped_option["labels_or_type"][0],
+                            mapped_option["properties"],
+                        )
+                    elif index_or_constraint_type == VectorIndex:
+                        await self.vector_index(
+                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            entity_type,
+                            mapped_option["labels_or_type"][0],
+                            mapped_option["properties"][0],
+                        )
+                    elif index_or_constraint_type == PointIndex:
+                        await self.point_index(
+                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            entity_type,
+                            mapped_option["labels_or_type"][0],
+                            mapped_option["properties"][0],
+                        )
 
             pass
 

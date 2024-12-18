@@ -110,7 +110,6 @@ class Pyneo4jClient(ABC):
     _transaction: Optional[AsyncTransaction]
     _using_batches: bool
     _models: Set[Union[Type[NodeModel], Type[RelationshipModel]]]
-    _initialized_models: Set[Union[Type[NodeModel], Type[RelationshipModel]]]
     _skip_constraint_creation: bool
     _skip_index_creation: bool
 
@@ -123,7 +122,6 @@ class Pyneo4jClient(ABC):
         self._session = None
         self._transaction = None
         self._models = set()
-        self._initialized_models = set()
         self._skip_constraint_creation = False
         self._skip_index_creation = False
         self._using_batches = False
@@ -159,8 +157,7 @@ class Pyneo4jClient(ABC):
         """
         Initializes all registered models by setting the defined indexes/constraints. This
         method has to be implemented by each client because of differences in index/constraint
-        creation. All registered models have to be added to the `_initialized_models` set to
-        allow tracking of models which have not been initialized yet.
+        creation.
         """
         pass  # pragma: no cover
 

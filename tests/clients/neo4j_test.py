@@ -289,7 +289,7 @@ class TestNeo4jIndexes:
 
     async def test_node_range_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.range_index("range_index", "Person", EntityType.NODE, "age")
+        await neo4j_client.range_index("range_index", EntityType.NODE, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -303,7 +303,7 @@ class TestNeo4jIndexes:
 
     async def test_node_range_index_multiple_properties(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.range_index("range_index", "Person", EntityType.NODE, ["age", "id"])
+        await neo4j_client.range_index("range_index", EntityType.NODE, "Person", ["age", "id"])
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -317,7 +317,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_range_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.range_index("range_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.range_index("range_index", EntityType.RELATIONSHIP, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -331,7 +331,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_range_index_multiple_properties(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.range_index("range_index", "Person", EntityType.RELATIONSHIP, ["age", "id"])
+        await neo4j_client.range_index("range_index", EntityType.RELATIONSHIP, "Person", ["age", "id"])
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -344,19 +344,19 @@ class TestNeo4jIndexes:
         assert constraints[0][7] == ["age", "id"]
 
     async def test_range_index_is_chainable(self, neo4j_session, neo4j_client):
-        return_value = await neo4j_client.range_index("range_index", "Person", EntityType.RELATIONSHIP, ["age", "id"])
+        return_value = await neo4j_client.range_index("range_index", EntityType.RELATIONSHIP, "Person", ["age", "id"])
         assert neo4j_client == return_value
 
     async def test_raises_on_existing_range_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.range_index("range_index", "Person", EntityType.RELATIONSHIP, ["age", "id"])
+        await neo4j_client.range_index("range_index", EntityType.RELATIONSHIP, "Person", ["age", "id"])
 
         with pytest.raises(ClientError):
-            await neo4j_client.range_index("range_index", "Person", EntityType.RELATIONSHIP, ["age", "id"], True)
+            await neo4j_client.range_index("range_index", EntityType.RELATIONSHIP, "Person", ["age", "id"], True)
 
     async def test_node_text_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.text_index("text_index", "Person", EntityType.NODE, "age")
+        await neo4j_client.text_index("text_index", EntityType.NODE, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -370,7 +370,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_text_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.text_index("text_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.text_index("text_index", EntityType.RELATIONSHIP, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -383,19 +383,19 @@ class TestNeo4jIndexes:
         assert constraints[0][7] == ["age"]
 
     async def test_text_index_is_chainable(self, neo4j_session, neo4j_client):
-        return_value = await neo4j_client.text_index("text_index", "Person", EntityType.RELATIONSHIP, "age")
+        return_value = await neo4j_client.text_index("text_index", EntityType.RELATIONSHIP, "Person", "age")
         assert neo4j_client == return_value
 
     async def test_raises_on_existing_text_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.text_index("text_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.text_index("text_index", EntityType.RELATIONSHIP, "Person", "age")
 
         with pytest.raises(ClientError):
-            await neo4j_client.text_index("text_index", "Person", EntityType.RELATIONSHIP, "age", True)
+            await neo4j_client.text_index("text_index", EntityType.RELATIONSHIP, "Person", "age", True)
 
     async def test_node_point_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.point_index("point_index", "Person", EntityType.NODE, "age")
+        await neo4j_client.point_index("point_index", EntityType.NODE, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -409,7 +409,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_point_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.point_index("point_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.point_index("point_index", EntityType.RELATIONSHIP, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -422,19 +422,19 @@ class TestNeo4jIndexes:
         assert constraints[0][7] == ["age"]
 
     async def test_point_index_is_chainable(self, neo4j_session, neo4j_client):
-        return_value = await neo4j_client.point_index("point_index", "Person", EntityType.RELATIONSHIP, "age")
+        return_value = await neo4j_client.point_index("point_index", EntityType.RELATIONSHIP, "Person", "age")
         assert neo4j_client == return_value
 
     async def test_raises_on_existing_point_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.point_index("point_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.point_index("point_index", EntityType.RELATIONSHIP, "Person", "age")
 
         with pytest.raises(ClientError):
-            await neo4j_client.point_index("point_index", "Person", EntityType.RELATIONSHIP, "age", True)
+            await neo4j_client.point_index("point_index", EntityType.RELATIONSHIP, "Person", "age", True)
 
     async def test_node_fulltext_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", "Person", EntityType.NODE, "age")
+        await neo4j_client.fulltext_index("fulltext_index", EntityType.NODE, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -448,7 +448,7 @@ class TestNeo4jIndexes:
 
     async def test_node_fulltext_index_multiple_labels(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", ["Person", "Worker"], EntityType.NODE, "age")
+        await neo4j_client.fulltext_index("fulltext_index", ["Person", EntityType.NODE, "Worker"], "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -462,7 +462,7 @@ class TestNeo4jIndexes:
 
     async def test_node_fulltext_index_multiple_properties(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", "Person", EntityType.NODE, ["age", "name"])
+        await neo4j_client.fulltext_index("fulltext_index", EntityType.NODE, "Person", ["age", "name"])
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -476,7 +476,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_fulltext_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -490,7 +490,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_fulltext_index_multiple_types(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", ["Person", "Worker"], EntityType.RELATIONSHIP, "age")
+        await neo4j_client.fulltext_index("fulltext_index", ["Person", EntityType.RELATIONSHIP, "Worker"], "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -504,7 +504,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_fulltext_index_multiple_properties(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", "Person", EntityType.RELATIONSHIP, ["age", "name"])
+        await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", ["age", "name"])
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -517,19 +517,19 @@ class TestNeo4jIndexes:
         assert constraints[0][7] == ["age", "name"]
 
     async def test_fulltext_index_is_chainable(self, neo4j_session, neo4j_client):
-        return_value = await neo4j_client.fulltext_index("fulltext_index", "Person", EntityType.RELATIONSHIP, "age")
+        return_value = await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", "age")
         assert neo4j_client == return_value
 
     async def test_raises_on_existing_fulltext_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", "age")
 
         with pytest.raises(ClientError):
-            await neo4j_client.fulltext_index("fulltext_index", "Person", EntityType.RELATIONSHIP, "age", True)
+            await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", "age", True)
 
     async def test_node_vector_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.vector_index("vector_index", "Person", EntityType.NODE, "age")
+        await neo4j_client.vector_index("vector_index", EntityType.NODE, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -543,7 +543,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_vector_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.vector_index("vector_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -556,24 +556,24 @@ class TestNeo4jIndexes:
         assert constraints[0][7] == ["age"]
 
     async def test_vector_index_is_chainable(self, neo4j_session, neo4j_client):
-        return_value = await neo4j_client.vector_index("vector_index", "Person", EntityType.RELATIONSHIP, "age")
+        return_value = await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age")
         assert neo4j_client == return_value
 
     async def test_raises_on_existing_vector_index(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.vector_index("vector_index", "Person", EntityType.RELATIONSHIP, "age")
+        await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age")
 
         with pytest.raises(ClientError):
-            await neo4j_client.vector_index("vector_index", "Person", EntityType.RELATIONSHIP, "age", True)
+            await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age", True)
 
     async def test_vector_index_min_neo4j_version(self, neo4j_session, neo4j_client):
         with patch.object(neo4j_client, "_version", "4.28.9"):
             with pytest.raises(UnsupportedDatabaseVersionError):
-                await neo4j_client.vector_index("vector_index", "Person", EntityType.RELATIONSHIP, "age")
+                await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age")
 
         with patch.object(neo4j_client, "_version", "5.1.9"):
             with pytest.raises(UnsupportedDatabaseVersionError):
-                await neo4j_client.vector_index("vector_index", "Person", EntityType.NODE, "age")
+                await neo4j_client.vector_index("vector_index", EntityType.NODE, "Person", "age")
 
 
 class TestNeo4jDatabaseInteractions:
