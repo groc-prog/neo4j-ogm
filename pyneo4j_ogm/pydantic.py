@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Type, Union
+from typing import Any, Dict, List, Tuple, Type, TypeVar, Union
 
 from pydantic import VERSION, BaseModel
 
@@ -14,6 +14,8 @@ from pyneo4j_ogm.options.field_options import (
     UniquenessConstraint,
     VectorIndex,
 )
+
+T = TypeVar("T", bound=BaseModel)
 
 IS_PYDANTIC_V2 = int(VERSION.split(".", 1)[0]) >= 2
 
@@ -104,5 +106,12 @@ def get_model_dump(model: BaseModel, *args, **kwargs):
     """
     if IS_PYDANTIC_V2:
         return model.model_dump(*args, **kwargs)
-    else:
-        return model.dict(*args, **kwargs)
+
+    return model.dict(*args, **kwargs)
+
+
+def parse_obj(model: Type[T], obj: Any) -> T:
+    if IS_PYDANTIC_V2:
+        return model.model_validate(obj)
+
+    return model.parse_obj(obj)
