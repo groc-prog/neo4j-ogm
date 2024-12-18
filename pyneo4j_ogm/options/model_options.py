@@ -1,6 +1,7 @@
-from typing import Any, Callable, Dict, List, Set, Tuple, TypedDict, Union
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 from pydantic import BaseModel, Field
+from typing_extensions import TypedDict
 
 from pyneo4j_ogm.pydantic import IS_PYDANTIC_V2
 from pyneo4j_ogm.types.graph import EagerFetchStrategy
@@ -94,13 +95,41 @@ class ModelConfigurationValidator(BaseModel):
         return normalized
 
     @classmethod
-    def __normalize_labels(cls, value: Any) -> Set[str]:
+    def __normalize_labels(cls, value: Any) -> List[str]:
         if not isinstance(value, (str, list, set)):
             raise ValueError("Labels must be string|list|set")
 
         if isinstance(value, str):
-            return set([value])
+            return [value]
         elif isinstance(value, list):
-            return set(value)
+            return list(set(value))
 
-        return value
+        return list(value)
+
+
+class ValidatedNodeConfiguration(BaseModel):
+    """
+    Model for validated node configuration. Mainly used to prevent wrong type-checking.
+    """
+
+    pre_hooks: Dict[Hooks, List[Callable]] = Field({})
+    post_hooks: Dict[Hooks, List[Callable]] = Field({})
+    skip_constraint_creation: bool = Field(False)
+    skip_index_creation: bool = Field(False)
+    eager_fetch: bool = Field(False)
+    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.DEFAULT)
+    labels: List[str] = Field([])
+
+
+class ValidatedRelationshipConfiguration(BaseModel):
+    """
+    Model for validated relationship configuration. Mainly used to prevent wrong type-checking.
+    """
+
+    pre_hooks: Dict[Hooks, List[Callable]] = Field({})
+    post_hooks: Dict[Hooks, List[Callable]] = Field({})
+    skip_constraint_creation: bool = Field(False)
+    skip_index_creation: bool = Field(False)
+    eager_fetch: bool = Field(False)
+    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.DEFAULT)
+    type: str = Field("")

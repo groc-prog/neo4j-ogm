@@ -4,7 +4,9 @@ from pyneo4j_ogm.models.base import ModelBase
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
     RelationshipConfig,
+    ValidatedRelationshipConfiguration,
 )
+from pyneo4j_ogm.pydantic import parse_obj
 
 
 class RelationshipModel(ModelBase):
@@ -14,6 +16,7 @@ class RelationshipModel(ModelBase):
     """
 
     ogm_config: ClassVar[RelationshipConfig]
+    _ogm_config: ClassVar[ValidatedRelationshipConfiguration]
 
     def __init_subclass__(cls, **kwargs):
         model_config = ModelConfigurationValidator(**getattr(cls, "ogm_config", {}))
@@ -25,3 +28,5 @@ class RelationshipModel(ModelBase):
         # we just always use the name if not stated otherwise
         if ("type" in parent_config and parent_config["type"] == model_config.type) or len(model_config.type) == 0:
             cls.ogm_config["type"] = cls.__name__.upper()
+
+        cls._ogm_config = parse_obj(ValidatedRelationshipConfiguration, cls.ogm_config)
