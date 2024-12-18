@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from pyneo4j_ogm.clients.base import Pyneo4jClient
-from pyneo4j_ogm.exceptions import InvalidClientError
 from pyneo4j_ogm.registry import Registry, with_client
 
 
@@ -57,7 +56,7 @@ class TestRegistry:
         registry.register(client1)
         registry.register(client2)
 
-        with pytest.raises(InvalidClientError):
+        with pytest.raises(ValueError):
             registry.register(NotAClient())
 
         assert client1 in registry._thread_ctx.clients
@@ -116,7 +115,7 @@ class TestRegistry:
     def test_invalid_client_set_active(self, registry):
         invalid_client = MagicMock(spec=Pyneo4jClient)
 
-        with pytest.raises(InvalidClientError):
+        with pytest.raises(ValueError):
             registry.set_active_client(invalid_client)
 
     def test_set_active_client_to_none(self, registry):
@@ -320,6 +319,6 @@ class TestWithClientFunction:
     def test_with_client_invalid_client(self):
         invalid_client = MagicMock(spec=Pyneo4jClient)
 
-        with pytest.raises(InvalidClientError):
+        with pytest.raises(ValueError):
             with with_client(invalid_client):
                 pass
