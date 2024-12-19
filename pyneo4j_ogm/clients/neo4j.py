@@ -20,6 +20,7 @@ from pyneo4j_ogm.options.field_options import (
     UniquenessConstraint,
     VectorIndex,
 )
+from pyneo4j_ogm.options.model_options import ValidatedNodeConfiguration
 from pyneo4j_ogm.pydantic import get_field_options, get_model_fields
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.types.graph import EntityType
@@ -398,21 +399,21 @@ class Neo4jClient(Pyneo4jClient):
 
                     if index_or_constraint_type == UniquenessConstraint:
                         await self.uniqueness_constraint(
-                            f"CT_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            f"CT_{index_or_constraint_type.__name__}_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
                             entity_type,
                             mapped_option["labels_or_type"][0],
                             mapped_option["properties"],
                         )
                     elif index_or_constraint_type == RangeIndex:
                         await self.range_index(
-                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            f"IX_{index_or_constraint_type.__name__}_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
                             entity_type,
                             mapped_option["labels_or_type"][0],
                             mapped_option["properties"],
                         )
                     elif index_or_constraint_type == TextIndex:
                         await self.text_index(
-                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            f"IX_{index_or_constraint_type.__name__}_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
                             entity_type,
                             mapped_option["labels_or_type"][0],
                             mapped_option["properties"][0],
@@ -420,21 +421,21 @@ class Neo4jClient(Pyneo4jClient):
                     elif index_or_constraint_type == FullTextIndex:
                         joined_labels_str = "_".join(mapped_option["labels_or_type"])
                         await self.fulltext_index(
-                            f"IX_{joined_labels_str}_{joined_property_str}",
+                            f"IX_{index_or_constraint_type.__name__}_{joined_labels_str}_{joined_property_str}",
                             entity_type,
                             mapped_option["labels_or_type"],
                             mapped_option["properties"],
                         )
                     elif index_or_constraint_type == VectorIndex:
                         await self.vector_index(
-                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            f"IX_{index_or_constraint_type.__name__}_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
                             entity_type,
                             mapped_option["labels_or_type"][0],
                             mapped_option["properties"][0],
                         )
                     elif index_or_constraint_type == PointIndex:
                         await self.point_index(
-                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            f"IX_{index_or_constraint_type.__name__}_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
                             entity_type,
                             mapped_option["labels_or_type"][0],
                             mapped_option["properties"][0],
@@ -513,6 +514,19 @@ class Neo4jClient(Pyneo4jClient):
 
                 if specified_labels is not None and isinstance(specified_labels, str):
                     specified_labels = [specified_labels]
+
+                # Validate that the provided specified_label is actually one defined on the model
+                if is_node_model and has_specified_labels:
+                    invalid_labels = [
+                        label
+                        for label in cast(List[str], specified_labels)
+                        if label not in cast(ValidatedNodeConfiguration, model._ogm_config).labels
+                    ]
+
+                    if len(invalid_labels) > 0:
+                        raise ValueError(
+                            f"Labels {', '.join(invalid_labels)} are not a valid label for model {model.__name__}"
+                        )
 
                 # Define defaults for each option we come across to make handling easier later on
                 if map_key not in mapped_options:
