@@ -16,7 +16,14 @@ from pyneo4j_ogm.exceptions import (
 )
 from pyneo4j_ogm.models.node import NodeModel
 from pyneo4j_ogm.models.relationship import RelationshipModel
-from pyneo4j_ogm.options.field_options import RangeIndex, UniquenessConstraint
+from pyneo4j_ogm.options.field_options import (
+    FullTextIndex,
+    PointIndex,
+    RangeIndex,
+    TextIndex,
+    UniquenessConstraint,
+    VectorIndex,
+)
 from pyneo4j_ogm.types.graph import EntityType
 from pyneo4j_ogm.types.neo4j import Neo4jIndexType
 from tests.fixtures.db import (
@@ -696,7 +703,57 @@ class TestNeo4jQueries:
         assert dict(result[0][0])["age"] == 24
 
 
-class TestNeo4jModelRegistration:
+class TestNeo4jModelInitialization:
+    async def test_skips_initialization_if_all_client_skips_defined(self, neo4j_session):
+        class Person(NodeModel):
+            uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
+
+        class Likes(RelationshipModel):
+            uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
+
+        client = await Neo4jClient().connect(
+            ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_constraints=True, skip_indexes=True
+        )
+        await client.register_models(Person, Likes)
+
+        query = await neo4j_session.run("SHOW CONSTRAINT")
+        constraints = await query.values()
+        await query.consume()
+
+        assert len(constraints) == 0
+
+        query = await neo4j_session.run("SHOW INDEXES")
+        indexes = await query.values()
+        await query.consume()
+
+        assert len(indexes) == 0
+
+    async def test_skips_initialization_if_all_model_skips_defined(self, neo4j_session):
+        class Person(NodeModel):
+            uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
+
+            ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
+
+        class Likes(RelationshipModel):
+            uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
+
+            ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
+
+        client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+        await client.register_models(Person, Likes)
+
+        query = await neo4j_session.run("SHOW CONSTRAINT")
+        constraints = await query.values()
+        await query.consume()
+
+        assert len(constraints) == 0
+
+        query = await neo4j_session.run("SHOW INDEXES")
+        indexes = await query.values()
+        await query.consume()
+
+        assert len(indexes) == 0
+
     class TestNeo4jUniquenessConstraint:
         async def test_model_registration_with_client_skipped_constraints(self, neo4j_session):
             class Person(NodeModel):
@@ -751,12 +808,12 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(constraints) == 2
-            assert constraints[0][1] == "CT_LIKES_uid"
+            assert constraints[0][1] == "CT_UniquenessConstraint_LIKES_uid"
             assert constraints[0][2] == "RELATIONSHIP_UNIQUENESS"
             assert constraints[0][3] == "RELATIONSHIP"
             assert constraints[0][4] == ["LIKES"]
             assert constraints[0][5] == ["uid"]
-            assert constraints[1][1] == "CT_Person_uid"
+            assert constraints[1][1] == "CT_UniquenessConstraint_Person_uid"
             assert constraints[1][2] == "UNIQUENESS"
             assert constraints[1][3] == "NODE"
             assert constraints[1][4] == ["Person"]
@@ -776,7 +833,7 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(constraints) == 1
-            assert constraints[0][1] == "CT_Person_uid"
+            assert constraints[0][1] == "CT_UniquenessConstraint_Person_uid"
             assert constraints[0][2] == "UNIQUENESS"
             assert constraints[0][3] == "NODE"
             assert constraints[0][4] == ["Person"]
@@ -796,7 +853,7 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(constraints) == 1
-            assert constraints[0][1] == "CT_Human_uid"
+            assert constraints[0][1] == "CT_UniquenessConstraint_Human_uid"
             assert constraints[0][2] == "UNIQUENESS"
             assert constraints[0][3] == "NODE"
             assert constraints[0][4] == ["Human"]
@@ -833,12 +890,12 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(constraints) == 2
-            assert constraints[0][1] == "CT_Person_age"
+            assert constraints[0][1] == "CT_UniquenessConstraint_Person_age"
             assert constraints[0][2] == "UNIQUENESS"
             assert constraints[0][3] == "NODE"
             assert constraints[0][4] == ["Person"]
             assert constraints[0][5] == ["age"]
-            assert constraints[1][1] == "CT_Person_uid"
+            assert constraints[1][1] == "CT_UniquenessConstraint_Person_uid"
             assert constraints[1][2] == "UNIQUENESS"
             assert constraints[1][3] == "NODE"
             assert constraints[1][4] == ["Person"]
@@ -859,12 +916,12 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(constraints) == 2
-            assert constraints[0][1] == "CT_Human_uid"
+            assert constraints[0][1] == "CT_UniquenessConstraint_Human_uid"
             assert constraints[0][2] == "UNIQUENESS"
             assert constraints[0][3] == "NODE"
             assert constraints[0][4] == ["Human"]
             assert constraints[0][5] == ["uid"]
-            assert constraints[1][1] == "CT_Person_age"
+            assert constraints[1][1] == "CT_UniquenessConstraint_Person_age"
             assert constraints[1][2] == "UNIQUENESS"
             assert constraints[1][3] == "NODE"
             assert constraints[1][4] == ["Person"]
@@ -904,7 +961,7 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(constraints) == 1
-            assert constraints[0][1] == "CT_Person_uid_age"
+            assert constraints[0][1] == "CT_UniquenessConstraint_Person_uid_age"
             assert constraints[0][2] == "UNIQUENESS"
             assert constraints[0][3] == "NODE"
             assert constraints[0][4] == ["Person"]
@@ -964,12 +1021,12 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(indexes) == 2
-            assert indexes[0][1] == "IX_LIKES_uid"
+            assert indexes[0][1] == "IX_RangeIndex_LIKES_uid"
             assert indexes[0][4] == Neo4jIndexType.RANGE.value
             assert indexes[0][5] == EntityType.RELATIONSHIP.value
             assert indexes[0][6] == ["LIKES"]
             assert indexes[0][7] == ["uid"]
-            assert indexes[1][1] == "IX_Person_uid"
+            assert indexes[1][1] == "IX_RangeIndex_Person_uid"
             assert indexes[1][4] == Neo4jIndexType.RANGE.value
             assert indexes[1][5] == EntityType.NODE.value
             assert indexes[1][6] == ["Person"]
@@ -989,7 +1046,7 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(indexes) == 1
-            assert indexes[0][1] == "IX_Person_uid"
+            assert indexes[0][1] == "IX_RangeIndex_Person_uid"
             assert indexes[0][4] == Neo4jIndexType.RANGE.value
             assert indexes[0][5] == EntityType.NODE.value
             assert indexes[0][6] == ["Person"]
@@ -1009,7 +1066,7 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(indexes) == 1
-            assert indexes[0][1] == "IX_Human_uid"
+            assert indexes[0][1] == "IX_RangeIndex_Human_uid"
             assert indexes[0][4] == Neo4jIndexType.RANGE.value
             assert indexes[0][5] == EntityType.NODE.value
             assert indexes[0][6] == ["Human"]
@@ -1046,12 +1103,12 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(indexes) == 2
-            assert indexes[0][1] == "IX_Person_age"
+            assert indexes[0][1] == "IX_RangeIndex_Person_age"
             assert indexes[0][4] == Neo4jIndexType.RANGE.value
             assert indexes[0][5] == EntityType.NODE.value
             assert indexes[0][6] == ["Person"]
             assert indexes[0][7] == ["age"]
-            assert indexes[1][1] == "IX_Person_uid"
+            assert indexes[1][1] == "IX_RangeIndex_Person_uid"
             assert indexes[1][4] == Neo4jIndexType.RANGE.value
             assert indexes[1][5] == EntityType.NODE.value
             assert indexes[1][6] == ["Person"]
@@ -1072,12 +1129,12 @@ class TestNeo4jModelRegistration:
             await query.consume()
 
             assert len(indexes) == 2
-            assert indexes[0][1] == "IX_Human_uid"
+            assert indexes[0][1] == "IX_RangeIndex_Human_uid"
             assert indexes[0][4] == Neo4jIndexType.RANGE.value
             assert indexes[0][5] == EntityType.NODE.value
             assert indexes[0][6] == ["Human"]
             assert indexes[0][7] == ["uid"]
-            assert indexes[1][1] == "IX_Person_age"
+            assert indexes[1][1] == "IX_RangeIndex_Person_age"
             assert indexes[1][4] == Neo4jIndexType.RANGE.value
             assert indexes[1][5] == EntityType.NODE.value
             assert indexes[1][6] == ["Person"]
@@ -1116,8 +1173,758 @@ class TestNeo4jModelRegistration:
 
             assert len(indexes) == 1
             assert len(indexes) == 1
-            assert indexes[0][1] == "IX_Person_uid_age"
+            assert indexes[0][1] == "IX_RangeIndex_Person_uid_age"
             assert indexes[0][4] == Neo4jIndexType.RANGE.value
             assert indexes[0][5] == EntityType.NODE.value
             assert indexes[0][6] == ["Person"]
+            assert indexes[0][7] == ["uid", "age"]
+
+    class TestNeo4jTextIndex:
+        async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, TextIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, TextIndex()]
+
+            client = await Neo4jClient().connect(
+                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, TextIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, TextIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_text_index(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, TextIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, TextIndex()]
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_TextIndex_LIKES_uid"
+            assert indexes[0][4] == Neo4jIndexType.TEXT.value
+            assert indexes[0][5] == EntityType.RELATIONSHIP.value
+            assert indexes[0][6] == ["LIKES"]
+            assert indexes[0][7] == ["uid"]
+            assert indexes[1][1] == "IX_TextIndex_Person_uid"
+            assert indexes[1][4] == Neo4jIndexType.TEXT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["uid"]
+
+        async def test_model_registration_with_text_index_multi_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, TextIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_TextIndex_Person_uid"
+            assert indexes[0][4] == Neo4jIndexType.TEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_text_index_specified_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, TextIndex(specified_label="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_TextIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.TEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_text_index_invalid_specified_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, TextIndex(specified_label="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_multiple_text_index(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, TextIndex()]
+                age: Annotated[int, TextIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_TextIndex_Person_age"
+            assert indexes[0][4] == Neo4jIndexType.TEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person"]
+            assert indexes[0][7] == ["age"]
+            assert indexes[1][1] == "IX_TextIndex_Person_uid"
+            assert indexes[1][4] == Neo4jIndexType.TEXT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["uid"]
+
+        async def test_model_registration_with_multiple_text_index_specified_labels(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, TextIndex(specified_label="Human")]
+                age: Annotated[int, TextIndex(specified_label="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_TextIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.TEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+            assert indexes[1][1] == "IX_TextIndex_Person_age"
+            assert indexes[1][4] == Neo4jIndexType.TEXT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["age"]
+
+    class TestNeo4jVectorIndex:
+        async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, VectorIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, VectorIndex()]
+
+            client = await Neo4jClient().connect(
+                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, VectorIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, VectorIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_vector_index(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, VectorIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, VectorIndex()]
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_VectorIndex_LIKES_uid"
+            assert indexes[0][4] == Neo4jIndexType.VECTOR.value
+            assert indexes[0][5] == EntityType.RELATIONSHIP.value
+            assert indexes[0][6] == ["LIKES"]
+            assert indexes[0][7] == ["uid"]
+            assert indexes[1][1] == "IX_VectorIndex_Person_uid"
+            assert indexes[1][4] == Neo4jIndexType.VECTOR.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["uid"]
+
+        async def test_model_registration_with_vector_index_multi_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, VectorIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_VectorIndex_Person_uid"
+            assert indexes[0][4] == Neo4jIndexType.VECTOR.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_vector_index_specified_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, VectorIndex(specified_label="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_VectorIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.VECTOR.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_vector_index_invalid_specified_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, VectorIndex(specified_label="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_multiple_vector_index(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, VectorIndex()]
+                age: Annotated[int, VectorIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_VectorIndex_Person_age"
+            assert indexes[0][4] == Neo4jIndexType.VECTOR.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person"]
+            assert indexes[0][7] == ["age"]
+            assert indexes[1][1] == "IX_VectorIndex_Person_uid"
+            assert indexes[1][4] == Neo4jIndexType.VECTOR.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["uid"]
+
+        async def test_model_registration_with_multiple_vector_index_specified_labels(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, VectorIndex(specified_label="Human")]
+                age: Annotated[int, VectorIndex(specified_label="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_VectorIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.VECTOR.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+            assert indexes[1][1] == "IX_VectorIndex_Person_age"
+            assert indexes[1][4] == Neo4jIndexType.VECTOR.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["age"]
+
+    class TestNeo4jPointIndex:
+        async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PointIndex()]
+
+            client = await Neo4jClient().connect(
+                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PointIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_vector_index(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PointIndex()]
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_PointIndex_LIKES_uid"
+            assert indexes[0][4] == Neo4jIndexType.POINT.value
+            assert indexes[0][5] == EntityType.RELATIONSHIP.value
+            assert indexes[0][6] == ["LIKES"]
+            assert indexes[0][7] == ["uid"]
+            assert indexes[1][1] == "IX_PointIndex_Person_uid"
+            assert indexes[1][4] == Neo4jIndexType.POINT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["uid"]
+
+        async def test_model_registration_with_vector_index_multi_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_PointIndex_Person_uid"
+            assert indexes[0][4] == Neo4jIndexType.POINT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_vector_index_specified_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex(specified_label="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_PointIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.POINT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_vector_index_invalid_specified_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex(specified_label="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_multiple_vector_index(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+                age: Annotated[int, PointIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_PointIndex_Person_age"
+            assert indexes[0][4] == Neo4jIndexType.POINT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person"]
+            assert indexes[0][7] == ["age"]
+            assert indexes[1][1] == "IX_PointIndex_Person_uid"
+            assert indexes[1][4] == Neo4jIndexType.POINT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["uid"]
+
+        async def test_model_registration_with_multiple_vector_index_specified_labels(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex(specified_label="Human")]
+                age: Annotated[int, PointIndex(specified_label="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_PointIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.POINT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+            assert indexes[1][1] == "IX_PointIndex_Person_age"
+            assert indexes[1][4] == Neo4jIndexType.POINT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["age"]
+
+    class TestNeo4jFullTextIndex:
+        async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, FullTextIndex()]
+
+            client = await Neo4jClient().connect(
+                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW CONSTRAINT")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex()]
+
+                ogm_config = {"skip_constraint_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, FullTextIndex()]
+
+                ogm_config = {"skip_constraint_creation": True}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW CONSTRAINT")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_full_text_index(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, FullTextIndex()]
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person, Likes)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[1][1] == "IX_FullTextIndex_Person_uid"
+            assert indexes[1][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["uid"]
+            assert indexes[0][1] == "IX_FullTextIndex_LIKES_uid"
+            assert indexes[0][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[0][5] == EntityType.RELATIONSHIP.value
+            assert indexes[0][6] == ["LIKES"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_full_text_index_multi_label(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_FullTextIndex_Person_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person", "Human"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_full_text_index_specified_labels_as_str(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex(specified_labels="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_FullTextIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_full_text_index_specified_labels_as_list(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex(specified_labels=["Human"])]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_FullTextIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+
+        async def test_model_registration_with_full_text_index_invalid_specified_labels(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex(specified_labels="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_multiple_full_text_index(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex()]
+                age: Annotated[int, FullTextIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_FullTextIndex_Person_Human_age"
+            assert indexes[0][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person", "Human"]
+            assert indexes[0][7] == ["age"]
+            assert indexes[1][1] == "IX_FullTextIndex_Person_Human_uid"
+            assert indexes[1][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person", "Human"]
+            assert indexes[1][7] == ["uid"]
+
+        async def test_model_registration_with_multiple_full_text_index_specified_labels(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex(specified_labels="Human")]
+                age: Annotated[int, FullTextIndex(specified_labels="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+            assert indexes[0][1] == "IX_FullTextIndex_Human_uid"
+            assert indexes[0][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Human"]
+            assert indexes[0][7] == ["uid"]
+            assert indexes[1][1] == "IX_FullTextIndex_Person_age"
+            assert indexes[1][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[1][5] == EntityType.NODE.value
+            assert indexes[1][6] == ["Person"]
+            assert indexes[1][7] == ["age"]
+
+        async def test_model_registration_with_multiple_full_text_index_invalid_composite_key(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex(specified_labels="Human", composite_key="key")]
+                age: Annotated[int, FullTextIndex(specified_labels="Person", composite_key="key")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_multiple_full_text_index_composite_key(self, neo4j_session):
+            class Person(NodeModel):
+                uid: Annotated[str, FullTextIndex(composite_key="key")]
+                age: Annotated[int, FullTextIndex(composite_key="key")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            await client.register_models(Person)
+
+            query = await neo4j_session.run("SHOW INDEXES")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][1] == "IX_FullTextIndex_Person_Human_uid_age"
+            assert indexes[0][4] == Neo4jIndexType.FULLTEXT.value
+            assert indexes[0][5] == EntityType.NODE.value
+            assert indexes[0][6] == ["Person", "Human"]
             assert indexes[0][7] == ["uid", "age"]
