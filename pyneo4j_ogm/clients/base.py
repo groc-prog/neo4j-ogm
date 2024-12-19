@@ -4,6 +4,7 @@ import os
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import wraps
+from time import perf_counter
 from typing import (
     Any,
     AsyncGenerator,
@@ -171,7 +172,7 @@ class Pyneo4jClient(ABC):
             bool: `True` if the client is connected and ready, otherwise `False`.
         """
         try:
-            logger.info("Checking client connection and authentication")
+            logger.debug("Checking client connection and authentication")
             if self._driver is None:
                 logger.debug("Client not initialized yet")
                 return False
@@ -481,7 +482,9 @@ class Pyneo4jClient(ABC):
 
         try:
             logger.info("'%s' with parameters %s", query, parameters)
+            query_start = perf_counter()
             query_result = await cast(AsyncTransaction, self._transaction).run(cast(LiteralString, query), parameters)
+            query_duration = (perf_counter() - query_start) * 1000
 
             logger.debug("Parsing query results")
             results = [list(result.values()) async for result in query_result]
@@ -497,7 +500,7 @@ class Pyneo4jClient(ABC):
                         raise ModelResolveError() from exc
 
             summary = await query_result.consume()
-            logger.info("Query finished after %dms", summary.result_available_after)
+            logger.info("Query finished after %dms", summary.result_available_after or query_duration)
 
             if not self._using_batches:
                 # Again, don't commit anything to the database when batching is enabled
@@ -548,7 +551,9 @@ class Pyneo4jClient(ABC):
             logger.debug("Session %s acquired", session)
 
             logger.info("'%s' with parameters %s", query, parameters)
+            query_start = perf_counter()
             query_result = await session.run(cast(LiteralString, query), parameters)
+            query_duration = (perf_counter() - query_start) * 1000
 
             logger.debug("Parsing query results")
             results = [list(result.values()) async for result in query_result]
@@ -564,7 +569,7 @@ class Pyneo4jClient(ABC):
                         raise ModelResolveError() from exc
 
             summary = await query_result.consume()
-            logger.info("Query finished after %dms", summary.result_available_after)
+            logger.info("Query finished after %dms", summary.result_available_after or query_duration)
 
             logger.debug("Closing session %s", session)
             await session.close()
