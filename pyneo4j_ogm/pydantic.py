@@ -4,7 +4,6 @@ from pydantic import VERSION, BaseModel
 
 from pyneo4j_ogm.options.field_options import (
     DataTypeConstraint,
-    EntityIndex,
     ExistenceConstraint,
     FullTextIndex,
     PointIndex,
@@ -24,7 +23,7 @@ def get_field_options(
     field,
 ) -> Tuple[
     List[Union[UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex]],
-    List[Union[UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, EntityIndex, PropertyIndex, PointIndex]],
+    List[Union[UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, PropertyIndex, PointIndex]],
 ]:
     """
     Returns the defined options from a model field.
@@ -50,7 +49,7 @@ def get_field_options(
             for annotated in field.metadata
             if isinstance(
                 annotated,
-                (UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, EntityIndex, PropertyIndex, PointIndex),
+                (UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, PropertyIndex, PointIndex),
             )
         ]
     else:
@@ -67,7 +66,7 @@ def get_field_options(
             for annotated in metadata
             if isinstance(
                 annotated,
-                (UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, EntityIndex, PropertyIndex, PointIndex),
+                (UniquenessConstraint, ExistenceConstraint, DataTypeConstraint, PropertyIndex, PointIndex),
             )
         ]
 
