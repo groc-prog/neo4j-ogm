@@ -416,10 +416,11 @@ class Neo4jClient(Pyneo4jClient):
                             mapped_option["properties"][0],
                         )
                     elif index_or_constraint_type == FullTextIndex:
+                        joined_labels_str = "_".join(mapped_option["labels_or_type"])
                         await self.fulltext_index(
-                            f"IX_{mapped_option['labels_or_type'][0]}_{joined_property_str}",
+                            f"IX_{joined_labels_str}_{joined_property_str}",
                             entity_type,
-                            mapped_option["labels_or_type"][0],
+                            mapped_option["labels_or_type"],
                             mapped_option["properties"],
                         )
                     elif index_or_constraint_type == VectorIndex:
@@ -446,6 +447,8 @@ class Neo4jClient(Pyneo4jClient):
         options: List[Union[UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex]],
         mapping: ModelInitializationMapping,
     ) -> None:
+        is_node_model = issubclass(model, NodeModel)
+
         for option in options:
             has_composite_key = getattr(option, "composite_key", None) is not None
             map_key = getattr(option, "composite_key") if has_composite_key else str(uuid4())
@@ -467,17 +470,17 @@ class Neo4jClient(Pyneo4jClient):
             # FullTextIndex is the only index with different structure since it can create the same index
             # on multiple labels
             if isinstance(option, tuple(types_to_check)):
-                specified_label: Optional[str] = (
-                    None if not issubclass(model, NodeModel) else getattr(option, "specified_label", None)
-                )
+                specified_label: Optional[str] = None if not is_node_model else getattr(option, "specified_label", None)
                 has_specified_label = specified_label is not None
+
+                # Validate that the provided specified_label is actually one defined on the model
+                if is_node_model and has_specified_label and specified_label not in model._ogm_config.labels:
+                    raise ValueError(f"'{specified_label}' is not a valid label for model {model.__name__}")
 
                 # Define defaults for each option we come across to make handling easier later on
                 if map_key not in mapped_options:
                     mapped_options[map_key] = {
-                        "labels_or_type": [
-                            model._ogm_config.labels[0] if issubclass(model, NodeModel) else model._ogm_config.type
-                        ],
+                        "labels_or_type": [model._ogm_config.labels[0] if is_node_model else model._ogm_config.type],
                         "properties": [field_name],
                         "has_labels_or_type_specified": False,
                     }
@@ -489,7 +492,9 @@ class Neo4jClient(Pyneo4jClient):
                     and mapped_options[map_key]["has_labels_or_type_specified"]
                     and specified_label != mapped_options[map_key]["labels_or_type"][0]
                 ):
-                    raise ValueError(f"Multiple different labels/types defined for composite key {map_key}")
+                    raise ValueError(
+                        f"Multiple different labels/types defined for composite key {map_key} in model {model.__name__}"
+                    )
 
                 # If no custom labels have been defined, we either use the existing label if we are currently handling
                 # a composite key or we generate a random UUID
@@ -498,7 +503,7 @@ class Neo4jClient(Pyneo4jClient):
                     mapped_options[map_key]["has_labels_or_type_specified"] = True
             elif not model._ogm_config.skip_index_creation and isinstance(option, FullTextIndex):
                 specified_labels: Optional[Union[List[str], str]] = (
-                    None if not issubclass(model, NodeModel) else getattr(option, "specified_labels", None)
+                    None if not is_node_model else getattr(option, "specified_labels", None)
                 )
                 has_specified_labels = specified_labels is not None
 
@@ -508,9 +513,7 @@ class Neo4jClient(Pyneo4jClient):
                 # Define defaults for each option we come across to make handling easier later on
                 if map_key not in mapped_options:
                     mapped_options[map_key] = {
-                        "labels_or_type": (
-                            model._ogm_config.labels if issubclass(model, NodeModel) else [model._ogm_config.type]
-                        ),
+                        "labels_or_type": (model._ogm_config.labels if is_node_model else [model._ogm_config.type]),
                         "properties": [field_name],
                         "has_labels_or_type_specified": False,
                     }
