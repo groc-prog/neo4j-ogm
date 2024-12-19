@@ -448,7 +448,7 @@ class TestNeo4jIndexes:
 
     async def test_node_fulltext_index_multiple_labels(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", ["Person", EntityType.NODE, "Worker"], "age")
+        await neo4j_client.fulltext_index("fulltext_index", EntityType.NODE, ["Person", "Worker"], "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()
@@ -490,7 +490,7 @@ class TestNeo4jIndexes:
 
     async def test_relationship_fulltext_index_multiple_types(self, neo4j_session, neo4j_client):
         await self._check_no_indexes(neo4j_session)
-        await neo4j_client.fulltext_index("fulltext_index", ["Person", EntityType.RELATIONSHIP, "Worker"], "age")
+        await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, ["Person", "Worker"], "age")
 
         query = await neo4j_session.run("SHOW INDEXES")
         constraints = await query.values()

@@ -187,6 +187,11 @@ class TestMemgraphConstraints:
         return_value = await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
         assert memgraph_client == return_value
 
+    async def test_data_type_constraint_does_not_throw_on_duplicate(self, memgraph_session, memgraph_client):
+        await self._check_no_constraints(memgraph_session)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
+        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
+
     async def test_bool_data_type_constraint(self, memgraph_session, memgraph_client):
         await self._check_no_constraints(memgraph_session)
         await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
@@ -600,12 +605,12 @@ class TestMemgraphIndexes:
 
     async def test_property_index_is_chainable(self, memgraph_session, memgraph_client):
         await self._check_no_indexes(memgraph_session)
-        return_value = await memgraph_client.property_index("Person", EntityType.NODE, "age")
+        return_value = await memgraph_client.property_index(EntityType.NODE, "Person", "age")
         assert memgraph_client == return_value
 
     async def test_node_property_index(self, memgraph_session, memgraph_client):
         await self._check_no_indexes(memgraph_session)
-        await memgraph_client.property_index("Person", EntityType.NODE, "age")
+        await memgraph_client.property_index(EntityType.NODE, "Person", "age")
 
         query = await memgraph_session.run("SHOW INDEX INFO")
         constraints = await query.values()
@@ -618,7 +623,7 @@ class TestMemgraphIndexes:
 
     async def test_relationship_property_index(self, memgraph_session, memgraph_client):
         await self._check_no_indexes(memgraph_session)
-        await memgraph_client.property_index("Person", EntityType.RELATIONSHIP, "age")
+        await memgraph_client.property_index(EntityType.RELATIONSHIP, "Person", "age")
 
         query = await memgraph_session.run("SHOW INDEX INFO")
         constraints = await query.values()
