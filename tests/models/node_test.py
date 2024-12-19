@@ -9,13 +9,13 @@ class TestOGMConfiguration:
         class Developer(NodeModel):
             pass
 
-        assert Developer.ogm_config["labels"] == set(["Developer"])  # type: ignore
+        assert set(Developer.ogm_config["labels"]) == set(["Developer"])  # type: ignore
 
     def test_default_labels_with_multi_word_name(self):
         class DeveloperPerson(NodeModel):
             pass
 
-        assert DeveloperPerson.ogm_config["labels"] == set(["DeveloperPerson"])  # type: ignore
+        assert set(DeveloperPerson.ogm_config["labels"]) == set(["DeveloperPerson"])  # type: ignore
 
     def test_labels_inheritance(self):
         class Person(NodeModel):
@@ -27,15 +27,15 @@ class TestOGMConfiguration:
         class Worker(Person):
             ogm_config = {"labels": {"HardWorking", "Human"}}
 
-        assert Person.ogm_config["labels"] == set(["Person"])  # type: ignore
-        assert Developer.ogm_config["labels"] == set(["Developer", "Person"])  # type: ignore
-        assert Worker.ogm_config["labels"] == set(["Person", "HardWorking", "Human"])  # type: ignore
+        assert set(Person.ogm_config["labels"]) == set(["Person"])  # type: ignore
+        assert set(Developer.ogm_config["labels"]) == set(["Developer", "Person"])  # type: ignore
+        assert set(Worker.ogm_config["labels"]) == set(["Person", "HardWorking", "Human"])  # type: ignore
 
     def test_labels_config(self):
         class Person(NodeModel):
             ogm_config = {"labels": "Worker"}
 
-        assert Person.ogm_config["labels"] == set(["Worker"])  # type: ignore
+        assert set(Person.ogm_config["labels"]) == set(["Worker"])  # type: ignore
 
     def test_labels_inheritance_with_parent_config(self):
         class Person(NodeModel):
@@ -44,8 +44,8 @@ class TestOGMConfiguration:
         class Developer(Person):
             pass
 
-        assert Person.ogm_config["labels"] == set(["Worker"])  # type: ignore
-        assert Developer.ogm_config["labels"] == set(["Developer", "Worker"])  # type: ignore
+        assert set(Person.ogm_config["labels"]) == set(["Worker"])  # type: ignore
+        assert set(Developer.ogm_config["labels"]) == set(["Developer", "Worker"])  # type: ignore
 
     def test_labels_inheritance_with_child_config(self):
         class Person(NodeModel):
@@ -54,26 +54,26 @@ class TestOGMConfiguration:
         class Developer(Person):
             ogm_config = {"labels": "PythonDeveloper"}
 
-        assert Person.ogm_config["labels"] == set(["Person"])  # type: ignore
-        assert Developer.ogm_config["labels"] == set(["PythonDeveloper", "Person"])  # type: ignore
+        assert set(Person.ogm_config["labels"]) == set(["Person"])  # type: ignore
+        assert set(Developer.ogm_config["labels"]) == set(["PythonDeveloper", "Person"])  # type: ignore
 
     def test_labels_as_str(self):
         class Person(NodeModel):
             ogm_config = {"labels": "Worker"}
 
-        assert Person.ogm_config["labels"] == set(["Worker"])  # type: ignore
+        assert set(Person.ogm_config["labels"]) == set(["Worker"])  # type: ignore
 
     def test_labels_as_list(self):
         class Person(NodeModel):
             ogm_config = {"labels": ["Worker", "HardWorking"]}
 
-        assert Person.ogm_config["labels"] == set(["Worker", "HardWorking"])  # type: ignore
+        assert set(Person.ogm_config["labels"]) == set(["Worker", "HardWorking"])  # type: ignore
 
     def test_labels_as_set(self):
         class Person(NodeModel):
             ogm_config = {"labels": {"Worker", "HardWorking"}}
 
-        assert Person.ogm_config["labels"] == set(["Worker", "HardWorking"])  # type: ignore
+        assert set(Person.ogm_config["labels"]) == set(["Worker", "HardWorking"])  # type: ignore
 
     def test_single_pre_hook(self):
         def hook_func():

@@ -19,6 +19,45 @@ from tests.fixtures.db import (
 )
 
 
+async def setup_constraints(session: neo4j.AsyncSession):
+    await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.id IS UNIQUE")
+    await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.name, n.address IS UNIQUE")
+    await session.run("CREATE CONSTRAINT ON (n:label) ASSERT EXISTS (n.property)")
+    await session.run("CREATE CONSTRAINT ON (n:label) ASSERT n.property IS TYPED STRING")
+
+    query = await session.run("SHOW CONSTRAINT INFO")
+    constraints = await query.values()
+    await query.consume()
+    assert len(constraints) == 4
+
+
+async def check_no_constraints(session: neo4j.AsyncSession):
+    query = await session.run("SHOW CONSTRAINT INFO")
+    constraints = await query.values()
+    await query.consume()
+    assert len(constraints) == 0
+
+
+async def setup_indexes(session: neo4j.AsyncSession):
+    await session.run("CREATE INDEX ON :Person")
+    await session.run("CREATE INDEX ON :Person(age)")
+    await session.run("CREATE EDGE INDEX ON :EDGE_TYPE")
+    await session.run("CREATE EDGE INDEX ON :EDGE_TYPE(property_name)")
+    await session.run("CREATE POINT INDEX ON :Label(property)")
+
+    query = await session.run("SHOW INDEX INFO")
+    constraints = await query.values()
+    await query.consume()
+    assert len(constraints) == 5
+
+
+async def check_no_indexes(session: neo4j.AsyncSession):
+    query = await session.run("SHOW INDEX INFO")
+    constraints = await query.values()
+    await query.consume()
+    assert len(constraints) == 0
+
+
 class TestMemgraphConnection:
     async def test_successful_connect(self):
         client = MemgraphClient()
@@ -100,560 +139,541 @@ class TestMemgraphConnection:
 
 
 class TestMemgraphConstraints:
-    async def _setup_constraints(self, session: neo4j.AsyncSession):
-        await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.id IS UNIQUE")
-        await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.name, n.address IS UNIQUE")
-        await session.run("CREATE CONSTRAINT ON (n:label) ASSERT EXISTS (n.property)")
-        await session.run("CREATE CONSTRAINT ON (n:label) ASSERT n.property IS TYPED STRING")
+    class TestMemgraphExistenceConstraint:
+        async def test_existence_constraint_is_chainable(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            return_value = await memgraph_client.existence_constraint("Person", "id")
+            assert memgraph_client == return_value
 
-        query = await session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-        assert len(constraints) == 4
+        async def test_existence_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.existence_constraint("Person", "id")
 
-    async def _check_no_constraints(self, session: neo4j.AsyncSession):
-        query = await session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-        assert len(constraints) == 0
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
 
+            assert len(constraints) == 1
+            assert constraints[0][0] == "exists"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+
+    class TestMemgraphUniquenessConstraint:
+        async def test_uniqueness_constraint_is_chainable(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            return_value = await memgraph_client.uniqueness_constraint("Person", "id")
+            assert memgraph_client == return_value
+
+        async def test_uniqueness_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.uniqueness_constraint("Person", "id")
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "unique"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == ["id"]
+
+        async def test_uniqueness_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.uniqueness_constraint("Person", ["id", "age"])
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "unique"
+            assert constraints[0][1] == "Person"
+            assert set(constraints[0][2]) == set(["id", "age"])
+
+    class TestMemgraphDataTypeConstraint:
+        async def test_data_type_constraint_is_chainable(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            return_value = await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
+            assert memgraph_client == return_value
+
+        async def test_data_type_constraint_does_not_throw_on_duplicate(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
+
+        async def test_bool_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "BOOL"
+
+        async def test_string_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.STRING)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "STRING"
+
+        async def test_string_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.STRING)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "STRING"
+
+        async def test_int_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.INTEGER)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "INTEGER"
+
+        async def test_int_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.INTEGER)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "INTEGER"
+
+        async def test_float_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.FLOAT)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "FLOAT"
+
+        async def test_float_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.FLOAT)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "FLOAT"
+
+        async def test_list_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LIST)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "LIST"
+
+        async def test_list_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LIST)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "LIST"
+
+        async def test_map_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.MAP)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "MAP"
+
+        async def test_map_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.MAP)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "MAP"
+
+        async def test_duration_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DURATION)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "DURATION"
+
+        async def test_duration_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DURATION)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "DURATION"
+
+        async def test_date_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DATE)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "DATE"
+
+        async def test_date_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DATE)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "DATE"
+
+        async def test_local_time_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_TIME)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "LOCAL TIME"
+
+        async def test_local_time_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_TIME)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "LOCAL TIME"
+
+        async def test_local_datetime_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_DATETIME)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "LOCAL DATE TIME"
+
+        async def test_local_datetime_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_DATETIME)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "LOCAL DATE TIME"
+
+        async def test_zoned_datetime_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ZONED_DATETIME)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "ZONED DATE TIME"
+
+        async def test_zoned_datetime_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ZONED_DATETIME)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "ZONED DATE TIME"
+
+        async def test_enum_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ENUM)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "ENUM"
+
+        async def test_enum_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ENUM)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "ENUM"
+
+        async def test_point_data_type_constraint(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.POINT)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "POINT"
+
+        async def test_point_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
+            await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.POINT)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "id"
+            assert constraints[0][3] == "POINT"
+
+
+class TestMemgraphIndexes:
+    class TestMemgraphEntityIndex:
+        async def test_index_is_chainable(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
+            return_value = await memgraph_client.entity_index("Person", EntityType.NODE)
+            assert memgraph_client == return_value
+
+        async def test_node_index(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
+            await memgraph_client.entity_index("Person", EntityType.NODE)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "label"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] is None
+
+        async def test_relationship_index(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
+            await memgraph_client.entity_index("Person", EntityType.RELATIONSHIP)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "edge-type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] is None
+
+    class TestMemgraphPropertyIndex:
+        async def test_property_index_is_chainable(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
+            return_value = await memgraph_client.property_index(EntityType.NODE, "Person", "age")
+            assert memgraph_client == return_value
+
+        async def test_node_property_index(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
+            await memgraph_client.property_index(EntityType.NODE, "Person", "age")
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "label+property"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "age"
+
+        async def test_relationship_property_index(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
+            await memgraph_client.property_index(EntityType.RELATIONSHIP, "Person", "age")
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "edge-type+property"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "age"
+
+    class TestMemgraphPointIndex:
+        async def test_point_index(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
+            await memgraph_client.point_index("Person", "age")
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "point"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "age"
+
+        async def test_point_index_is_chainable(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
+            return_value = await memgraph_client.point_index("Person", "age")
+            assert memgraph_client == return_value
+
+
+class TestMemgraphQueries:
     async def test_drop_constraints(self, memgraph_session, memgraph_client):
-        await self._setup_constraints(memgraph_session)
+        await setup_constraints(memgraph_session)
         await memgraph_client.drop_constraints()
 
-        await self._check_no_constraints(memgraph_session)
+        await check_no_constraints(memgraph_session)
 
     async def test_drop_constraints_is_chainable(self, memgraph_session, memgraph_client):
         return_value = await memgraph_client.drop_constraints()
         assert memgraph_client == return_value
 
     async def test_does_nothing_if_no_constraints_defined(self, memgraph_session, memgraph_client):
+        await check_no_constraints(memgraph_session)
+
         with patch("pyneo4j_ogm.clients.memgraph.MemgraphClient.cypher", wraps=memgraph_client.cypher) as cypher_spy:
             await memgraph_client.drop_constraints()
 
             cypher_spy.assert_called_once()
 
-    async def test_existence_constraint_is_chainable(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        return_value = await memgraph_client.existence_constraint("Person", "id")
-        assert memgraph_client == return_value
-
-    async def test_existence_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.existence_constraint("Person", "id")
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "exists"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-
-    async def test_uniqueness_constraint_is_chainable(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        return_value = await memgraph_client.uniqueness_constraint("Person", "id")
-        assert memgraph_client == return_value
-
-    async def test_uniqueness_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.uniqueness_constraint("Person", "id")
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "unique"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == ["id"]
-
-    async def test_uniqueness_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.uniqueness_constraint("Person", ["id", "age"])
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "unique"
-        assert constraints[0][1] == "Person"
-        assert set(constraints[0][2]) == set(["id", "age"])
-
-    async def test_data_type_constraint_is_chainable(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        return_value = await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
-        assert memgraph_client == return_value
-
-    async def test_data_type_constraint_does_not_throw_on_duplicate(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
-
-    async def test_bool_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "BOOL"
-
-    async def test_string_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.STRING)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "STRING"
-
-    async def test_string_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.STRING)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "STRING"
-
-    async def test_int_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.INTEGER)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "INTEGER"
-
-    async def test_int_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.INTEGER)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "INTEGER"
-
-    async def test_float_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.FLOAT)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "FLOAT"
-
-    async def test_float_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.FLOAT)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "FLOAT"
-
-    async def test_list_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LIST)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "LIST"
-
-    async def test_list_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LIST)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "LIST"
-
-    async def test_map_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.MAP)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "MAP"
-
-    async def test_map_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.MAP)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "MAP"
-
-    async def test_duration_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DURATION)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "DURATION"
-
-    async def test_duration_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DURATION)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "DURATION"
-
-    async def test_date_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DATE)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "DATE"
-
-    async def test_date_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.DATE)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "DATE"
-
-    async def test_local_time_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_TIME)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "LOCAL TIME"
-
-    async def test_local_time_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_TIME)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "LOCAL TIME"
-
-    async def test_local_datetime_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_DATETIME)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "LOCAL DATE TIME"
-
-    async def test_local_datetime_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.LOCAL_DATETIME)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "LOCAL DATE TIME"
-
-    async def test_zoned_datetime_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ZONED_DATETIME)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "ZONED DATE TIME"
-
-    async def test_zoned_datetime_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ZONED_DATETIME)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "ZONED DATE TIME"
-
-    async def test_enum_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ENUM)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "ENUM"
-
-    async def test_enum_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.ENUM)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "ENUM"
-
-    async def test_point_data_type_constraint(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.POINT)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "POINT"
-
-    async def test_point_data_type_constraint_multiple_properties(self, memgraph_session, memgraph_client):
-        await self._check_no_constraints(memgraph_session)
-        await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.POINT)
-
-        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "data_type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "id"
-        assert constraints[0][3] == "POINT"
-
-
-class TestMemgraphIndexes:
-    async def _setup_indexes(self, session: neo4j.AsyncSession):
-        await session.run("CREATE INDEX ON :Person")
-        await session.run("CREATE INDEX ON :Person(age)")
-        await session.run("CREATE EDGE INDEX ON :EDGE_TYPE")
-        await session.run("CREATE EDGE INDEX ON :EDGE_TYPE(property_name)")
-        await session.run("CREATE POINT INDEX ON :Label(property)")
-
-        query = await session.run("SHOW INDEX INFO")
-        constraints = await query.values()
-        await query.consume()
-        assert len(constraints) == 5
-
-    async def _check_no_indexes(self, session: neo4j.AsyncSession):
-        query = await session.run("SHOW INDEX INFO")
-        constraints = await query.values()
-        await query.consume()
-        assert len(constraints) == 0
-
     async def test_drop_indexes(self, memgraph_session, memgraph_client):
-        await self._setup_indexes(memgraph_session)
+        await setup_indexes(memgraph_session)
         await memgraph_client.drop_indexes()
 
-        await self._check_no_indexes(memgraph_session)
+        await check_no_indexes(memgraph_session)
 
     async def test_drop_indexes_is_chainable(self, memgraph_session, memgraph_client):
         return_value = await memgraph_client.drop_indexes()
         assert memgraph_client == return_value
 
-    async def test_index_is_chainable(self, memgraph_session, memgraph_client):
-        await self._check_no_indexes(memgraph_session)
-        return_value = await memgraph_client.entity_index("Person", EntityType.NODE)
-        assert memgraph_client == return_value
+    async def test_does_nothing_if_no_index_defined(self, memgraph_session, memgraph_client):
+        await check_no_indexes(memgraph_session)
 
-    async def test_node_index(self, memgraph_session, memgraph_client):
-        await self._check_no_indexes(memgraph_session)
-        await memgraph_client.entity_index("Person", EntityType.NODE)
+        with patch("pyneo4j_ogm.clients.memgraph.MemgraphClient.cypher", wraps=memgraph_client.cypher) as cypher_spy:
+            await memgraph_client.drop_indexes()
 
-        query = await memgraph_session.run("SHOW INDEX INFO")
-        constraints = await query.values()
-        await query.consume()
+            cypher_spy.assert_called_once()
 
-        assert len(constraints) == 1
-        assert constraints[0][0] == "label"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] is None
-
-    async def test_relationship_index(self, memgraph_session, memgraph_client):
-        await self._check_no_indexes(memgraph_session)
-        await memgraph_client.entity_index("Person", EntityType.RELATIONSHIP)
-
-        query = await memgraph_session.run("SHOW INDEX INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "edge-type"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] is None
-
-    async def test_property_index_is_chainable(self, memgraph_session, memgraph_client):
-        await self._check_no_indexes(memgraph_session)
-        return_value = await memgraph_client.property_index(EntityType.NODE, "Person", "age")
-        assert memgraph_client == return_value
-
-    async def test_node_property_index(self, memgraph_session, memgraph_client):
-        await self._check_no_indexes(memgraph_session)
-        await memgraph_client.property_index(EntityType.NODE, "Person", "age")
-
-        query = await memgraph_session.run("SHOW INDEX INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "label+property"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "age"
-
-    async def test_relationship_property_index(self, memgraph_session, memgraph_client):
-        await self._check_no_indexes(memgraph_session)
-        await memgraph_client.property_index(EntityType.RELATIONSHIP, "Person", "age")
-
-        query = await memgraph_session.run("SHOW INDEX INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "edge-type+property"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "age"
-
-    async def test_point_index(self, memgraph_session, memgraph_client):
-        await self._check_no_indexes(memgraph_session)
-        await memgraph_client.point_index("Person", "age")
-
-        query = await memgraph_session.run("SHOW INDEX INFO")
-        constraints = await query.values()
-        await query.consume()
-
-        assert len(constraints) == 1
-        assert constraints[0][0] == "point"
-        assert constraints[0][1] == "Person"
-        assert constraints[0][2] == "age"
-
-    async def test_point_index_is_chainable(self, memgraph_session, memgraph_client):
-        await self._check_no_indexes(memgraph_session)
-        return_value = await memgraph_client.point_index("Person", "age")
-        assert memgraph_client == return_value
-
-
-class TestMemgraphQueries:
     async def test_drop_nodes(self, memgraph_client, memgraph_session):
         await memgraph_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
         query = await memgraph_session.run("MATCH (n) RETURN n")
