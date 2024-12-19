@@ -55,7 +55,7 @@ class ModelConfigurationValidator(BaseModel):
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)
     eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.DEFAULT)
-    labels: Set[str] = Field(set())
+    labels: List[str] = Field([])
     type: str = Field("")
 
     if IS_PYDANTIC_V2:
@@ -101,10 +101,10 @@ class ModelConfigurationValidator(BaseModel):
 
         if isinstance(value, str):
             return [value]
-        elif isinstance(value, list):
-            return list(set(value))
+        elif isinstance(value, set):
+            return list(value)
 
-        return list(value)
+        return value
 
 
 class ValidatedNodeConfiguration(BaseModel):

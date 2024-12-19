@@ -1,4 +1,4 @@
-from typing import ClassVar, Set, cast
+from typing import ClassVar, List, Set, cast
 
 from pyneo4j_ogm.models.base import ModelBase
 from pyneo4j_ogm.options.model_options import (
@@ -32,8 +32,10 @@ class NodeModel(ModelBase):
             raise ValueError("'labels' property not initialized")  # pragma: no cover
 
         if len(custom_labels) == 0:
-            cast(Set[str], cls.ogm_config["labels"]).update([cls.__name__])
+            cast(List[str], cls.ogm_config["labels"]).append(cls.__name__)
         else:
-            cls.ogm_config["labels"] = cast(Set[str], cls.ogm_config["labels"]).union(model_config.labels)
+            for label in model_config.labels:
+                if label not in cls.ogm_config["labels"]:
+                    cast(List[str], cls.ogm_config["labels"]).append(label)
 
         cls._ogm_config = parse_obj(ValidatedNodeConfiguration, cls.ogm_config)
