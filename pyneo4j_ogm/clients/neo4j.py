@@ -378,7 +378,9 @@ class Neo4jClient(Pyneo4jClient):
         for model in self._models:
             entity_type = EntityType.NODE if issubclass(model, NodeModel) else EntityType.RELATIONSHIP
 
-            if model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation:
+            if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
+                self._skip_constraint_creation and self._skip_index_creation
+            ):
                 logger.debug("Constraint and index creation disabled for model %s, skipping", model.__name__)
                 continue
 
@@ -459,9 +461,9 @@ class Neo4jClient(Pyneo4jClient):
             mapped_options = mapping[type(option)]
 
             types_to_check = []
-            if not model._ogm_config.skip_constraint_creation:
+            if not (model._ogm_config.skip_constraint_creation or self._skip_constraint_creation):
                 types_to_check.append(UniquenessConstraint)
-            if not model._ogm_config.skip_index_creation:
+            if not (model._ogm_config.skip_index_creation or self._skip_index_creation):
                 types_to_check.extend([TextIndex, PointIndex, RangeIndex, VectorIndex])
 
             if has_composite_key and map_key in mapped_options:
@@ -501,7 +503,9 @@ class Neo4jClient(Pyneo4jClient):
                 if has_specified_label:
                     mapped_options[map_key]["labels_or_type"] = [specified_label]
                     mapped_options[map_key]["has_labels_or_type_specified"] = True
-            elif not model._ogm_config.skip_index_creation and isinstance(option, FullTextIndex):
+            elif not (model._ogm_config.skip_index_creation or self._skip_index_creation) and isinstance(
+                option, FullTextIndex
+            ):
                 specified_labels: Optional[Union[List[str], str]] = (
                     None if not is_node_model else getattr(option, "specified_labels", None)
                 )

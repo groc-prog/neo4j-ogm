@@ -265,7 +265,9 @@ class MemgraphClient(Pyneo4jClient):
         for model in self._models:
             entity_type = EntityType.NODE if issubclass(model, NodeModel) else EntityType.RELATIONSHIP
 
-            if model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation:
+            if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
+                self._skip_index_creation and self._skip_constraint_creation
+            ):
                 logger.debug("Constraint and index creation disabled for model %s, skipping", model.__name__)
                 continue
 
@@ -325,9 +327,9 @@ class MemgraphClient(Pyneo4jClient):
             mapped_options = mapping[type(option)]
 
             types_to_check = []
-            if not model._ogm_config.skip_constraint_creation:
+            if not (model._ogm_config.skip_constraint_creation or self._skip_constraint_creation):
                 types_to_check.extend([UniquenessConstraint, ExistenceConstraint, DataTypeConstraint])
-            if not model._ogm_config.skip_index_creation:
+            if not (model._ogm_config.skip_index_creation or self._skip_index_creation):
                 types_to_check.extend([PropertyIndex, PointIndex])
 
             if has_composite_key and map_key in mapped_options:
