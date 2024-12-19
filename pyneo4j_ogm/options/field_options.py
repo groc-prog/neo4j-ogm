@@ -45,18 +45,6 @@ class DataTypeConstraint:
 
 
 @dataclass
-class EntityIndex:
-    """
-    Memgraph specific constraint. Used to define a entity index for a given property.
-
-    For multi-label nodes, a specific label can be defined with the `specified_label` property.
-    By default, the first available label from the model will be used. Can only be used with nodes.
-    """
-
-    specified_label: Optional[str] = None
-
-
-@dataclass
 class PropertyIndex:
     """
     Memgraph specific constraint. Used to define a property index for a given property.
