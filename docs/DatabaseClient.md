@@ -112,6 +112,38 @@ async with client.batch():
 
 You can batch anything that runs a query, be that a model method, a custom query or a relationship-property method. If any of the queries fail, the whole transaction will be rolled back and an exception will be raised.
 
+For batching in queries, that you want to execute concurrently with other `neo4j` transactions, use `client.concurrent_batch()` and pass it's return value into any model method, custom query or relationship-property method as arg `batch_manager`
+
+```python
+coroutines_count = 3
+queries_by_batch = 3
+coroutines = []
+
+async def batch_query(n):
+    async with client.concurrent_batch() as batch:
+        for i in range(queries_by_batch):
+            await client.cypher(
+                query="CREATE (d:Developer {uid: $uid, name: $name, age: $age})",
+                parameters={"uid": uuid.uuid4(), "name": f"Dev {n}{i}", "age": 25+i},
+                batch_manager=batch
+            )
+
+for i in range(coroutines_count):
+    coroutines.append(
+        batch_query(i)
+    )
+await asyncio.gather(*coroutines)
+query_results = await session.run("MATCH (n) RETURN n")
+results = await query_results.values()
+await query_results.consume()
+
+print(len(results))  ## 9 (if the database was empty before)
+```
+
+Avoid running queries concurrently in one batch, as it is not an intended behavior of queries inside a transaction, and may lead to your code being stuck.
+
+Non-batch queries are concurrent by default.
+
 ### Using bookmarks (Enterprise Edition only)
 
 If you are using the Enterprise Edition of Neo4j, you can use bookmarks to keep track of the last transaction that has been committed. The client provides a `last_bookmarks` property that allows you to get the bookmarks from the last session. These bookmarks can be used in combination with the `use_bookmarks()` method. Like the `batch()` method, the `use_bookmarks()` method has to be called with a context manager. All queries run inside the context manager will use the bookmarks passed to the `use_bookmarks()` method. Here is an example of how to use bookmarks:

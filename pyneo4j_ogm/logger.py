@@ -9,7 +9,7 @@ import logging
 from os import environ
 
 enable_logging = environ.get("PYNEO4J_OGM_ENABLE_LOGGING", "True").lower() == "true"
-log_level = int(environ.get("PYNEO4J_OGM_LOG_LEVEL", logging.WARNING))
+log_level = int(environ.get("PYNEO4J_OGM_LOG_LEVEL", logging.DEBUG))
 
 logger = logging.getLogger("pyneo4j-ogm")
 logger.setLevel(log_level)

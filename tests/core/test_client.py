@@ -1,6 +1,6 @@
 # pylint: disable=unused-argument, unused-import, redefined-outer-name, protected-access, missing-module-docstring, missing-class-docstring
 # pyright: reportGeneralTypeIssues=false
-
+import asyncio
 import os
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -58,11 +58,57 @@ async def test_batch(client: Pyneo4jClient, session: AsyncSession):
     assert len(results) == 2
 
 
+async def test_concurrent_non_batch_execution(client: Pyneo4jClient, session: AsyncSession):
+    coroutines_count = 3
+    coroutines = []
+    for i in range(coroutines_count):
+        coroutines.append(
+            client.cypher("CREATE (n:Node) SET n.name = $name", parameters={"name": f"TestName{i}"},)
+        )
+    await asyncio.gather(*coroutines)
+    query_results = await session.run("MATCH (n) RETURN n")
+    results = await query_results.values()
+    await query_results.consume()
+
+    assert len(results) == coroutines_count
+
+
+async def test_concurrent_batch_execution(client: Pyneo4jClient, session: AsyncSession):
+    coroutines_count = 3
+    queries_by_batch = 3
+    coroutines = []
+
+    async def batch_query(n):
+        async with client.concurrent_batch() as batch:
+            for j in range(queries_by_batch):
+                await client.cypher(
+                    "CREATE (n:Node) SET n.name = $name", parameters={"name": f"TestName{n}{j}"},
+                    batch_manager=batch
+                )
+
+    for i in range(coroutines_count):
+        coroutines.append(
+            batch_query(i)
+        )
+    await asyncio.gather(*coroutines)
+    query_results = await session.run("MATCH (n) RETURN n")
+    results = await query_results.values()
+    await query_results.consume()
+
+    assert len(results) == coroutines_count * queries_by_batch
+
+
 async def test_batch_exception(client: Pyneo4jClient, session: AsyncSession):
     with pytest.raises(Exception):
-        async with client.batch():
-            await client.cypher("CREATE (n:Node) SET n.name = $name", parameters={"name": "TestName"})
-            await client.cypher("CREATE (n:Node) SET n.name = $name", parameters={"name": "TestName2"})
+        async with client.batch() as batch:
+            await client.cypher(
+                "CREATE (n:Node) SET n.name = $name", parameters={"name": "TestName"},
+                batch_manager=batch
+            )
+            await client.cypher(
+                "CREATE (n:Node) SET n.name = $name", parameters={"name": "TestName"},
+                batch_manager=batch
+            )
 
             raise Exception("Test Exception")  # pylint: disable=broad-exception-raised
 
