@@ -7,7 +7,7 @@ the database for CRUD operations on relationships.
 import json
 import re
 from functools import wraps
-from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Union, cast
+from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Union, cast, TYPE_CHECKING
 
 from neo4j.graph import Node, Relationship
 from pydantic import PrivateAttr
@@ -34,6 +34,11 @@ from pyneo4j_ogm.queries.types import (
     RelationshipFilters,
     RelationshipMatchDirection,
 )
+if TYPE_CHECKING:
+    from pyneo4j_ogm.core.client import BatchManagerConcurrent
+else:
+    BatchManagerConcurrent = object
+
 
 T = TypeVar("T", bound="RelationshipModel")
 
@@ -132,10 +137,13 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
 
     @hooks
     @ensure_alive
-    async def update(self) -> None:
+    async def update(self, batch_manager: Optional[BatchManagerConcurrent] = None) -> None:
         """
         Updates the corresponding relationship in the database with the current instance values.
 
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
         """
@@ -166,6 +174,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 "element_id": self._element_id,
                 **deflated,
             },
+            batch_manager=batch_manager,
         )
 
         logger.debug("Checking if query returned a result")
@@ -188,10 +197,14 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
 
     @hooks
     @ensure_alive
-    async def delete(self) -> None:
+    async def delete(self, batch_manager: Optional[BatchManagerConcurrent] = None) -> None:
         """
         Deletes the corresponding relationship in the database and marks this instance as destroyed. If another
         method is called on this instance, an `InstanceDestroyed` will be raised.
+
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -206,6 +219,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
             parameters={
                 "element_id": self._element_id,
             },
+            batch_manager=batch_manager,
         )
 
         logger.debug("Marking instance as destroyed")
@@ -214,9 +228,13 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
 
     @hooks
     @ensure_alive
-    async def refresh(self) -> None:
+    async def refresh(self, batch_manager: Optional[BatchManagerConcurrent] = None) -> None:
         """
         Refreshes the current instance with the values from the database.
+
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -241,9 +259,13 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
 
     @hooks
     @ensure_alive
-    async def start_node(self) -> Type[NodeModel]:
+    async def start_node(self, batch_manager: Optional[BatchManagerConcurrent] = None) -> Type[NodeModel]:
         """
         Returns the start node the relationship belongs to.
+
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -261,6 +283,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
             parameters={
                 "element_id": self._element_id,
             },
+            batch_manager=batch_manager,
         )
 
         logger.debug("Checking if query returned a result")
@@ -271,9 +294,13 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
 
     @hooks
     @ensure_alive
-    async def end_node(self) -> Type[NodeModel]:
+    async def end_node(self, batch_manager: Optional[BatchManagerConcurrent] = None) -> Type[NodeModel]:
         """
         Returns the end node the relationship belongs to.
+
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -291,6 +318,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
             parameters={
                 "element_id": self._element_id,
             },
+            batch_manager=batch_manager,
         )
 
         logger.debug("Checking if query returned a result")
@@ -306,6 +334,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
         filters: RelationshipFilters,
         projections: Optional[Projection] = None,
         raise_on_empty: bool = False,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> Optional[Union[T, Dict[str, Any]]]:
         """
         Finds the first relationship that matches `filters` and returns it. If no matching relationship is found,
@@ -317,6 +346,8 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 the new keys in the projection and the value defines the model property to be projected. A invalid
                 or empty projection will result in the whole model instance being returned. Defaults to `None`.
             raise_on_empty (bool, optional): Whether to raise a `NoResultFound` if no match is found.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             InvalidFilters: If no filters or invalid filters are provided.
@@ -357,6 +388,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 {projection_query}
             """,
             parameters=cls._query_builder.parameters,
+            batch_manager=batch_manager,
         )
 
         logger.debug("Checking if query returned a result")
@@ -380,6 +412,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
         filters: Optional[RelationshipFilters] = None,
         projections: Optional[Projection] = None,
         options: Optional[QueryOptions] = None,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> List[Union[T, Dict[str, Any]]]:
         """
         Finds the all relationships that matches `filters` and returns them. If no matching relationships are found,
@@ -392,6 +425,8 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 the new keys in the projection and the value defines the model property to be projected. A invalid
                 or empty projection will result in the whole model instance being returned. Defaults to `None`.
             options (QueryOptions | None, optional): Options for modifying the query result. Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Returns:
             List[T | Dict[str, Any]]: A list of model instances or dictionaries if a projection is provided.
@@ -426,6 +461,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 {projection_query}
             """,
             parameters=cls._query_builder.parameters,
+            batch_manager=batch_manager,
         )
 
         # Normalize results to instance classes
@@ -452,6 +488,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
         filters: RelationshipFilters,
         new: bool = False,
         raise_on_empty: bool = False,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> Optional[T]:
         """
         Finds the first relationship that matches `filters` and updates it with the values defined by `update`. If
@@ -464,6 +501,8 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 returned. Defaults to `False`.
             raise_on_empty (bool, optional): Whether to raise a `NoResultFound` if no match is found. Defaults to
                 `False`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             InvalidFilters: If no filters or invalid filters are provided.
@@ -503,6 +542,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 LIMIT 1
             """,
             parameters=cls._query_builder.parameters,
+            batch_manager=batch_manager,
         )
 
         logger.debug("Checking if query returned a result")
@@ -546,6 +586,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 "element_id": new_instance._element_id,
                 **deflated,
             },
+            batch_manager=batch_manager,
         )
 
         logger.debug("Successfully updated relationship %s", getattr(new_instance, "_element_id"))
@@ -558,6 +599,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
         update: Dict[str, Any],
         filters: Optional[RelationshipFilters] = None,
         new: bool = False,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> List[T]:
         """
         Finds all relationships that match `filters` and updates them with the values defined by `update`.
@@ -567,6 +609,8 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
             filters (RelationshipFilters): Expressions applied to the query. Defaults to `None`.
             new (bool, optional): Whether to return the updated relationships. By default, the old relationships is
                 returned. Defaults to `False`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Returns:
             List[T]: By default, the old relationship instances are returned. If `new` is set to `True`, the
@@ -599,6 +643,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 RETURN DISTINCT r
             """,
             parameters=cls._query_builder.parameters,
+            batch_manager=batch_manager,
         )
 
         old_instances: List[T] = []
@@ -637,6 +682,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 RETURN DISTINCT r
             """,
             parameters={**deflated_properties, **cls._query_builder.parameters},
+            batch_manager=batch_manager,
         )
 
         logger.debug(
@@ -657,7 +703,12 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
 
     @classmethod
     @hooks
-    async def delete_one(cls: Type[T], filters: RelationshipFilters, raise_on_empty: bool = False) -> int:
+    async def delete_one(
+        cls: Type[T],
+        filters: RelationshipFilters,
+        raise_on_empty: bool = False,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
+    ) -> int:
         """
         Finds the first relationship that matches `filters` and deletes it. If no match is found, a
         `UnexpectedEmptyResult` is raised.
@@ -666,6 +717,8 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
             filters (RelationshipFilters): Expressions applied to the query. Defaults to `None`.
             raise_on_empty (bool, optional): Whether to raise a `NoResultFound` if no match is found. Defaults to
                 `False`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -699,6 +752,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 RETURN count(r)
             """,
             parameters=cls._query_builder.parameters,
+            batch_manager=batch_manager,
         )
 
         if len(results) == 0 or len(results[0]) == 0 or results[0][0] is None:
@@ -711,7 +765,11 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
 
     @classmethod
     @hooks
-    async def delete_many(cls: Type[T], filters: Optional[RelationshipFilters] = None) -> int:
+    async def delete_many(
+        cls: Type[T],
+        filters: Optional[RelationshipFilters] = None,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
+    ) -> int:
         """
         Finds all relationships that match `filters` and deletes them.
 
@@ -743,6 +801,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
             """,
             parameters=cls._query_builder.parameters,
             resolve_models=False,
+            batch_manager=batch_manager,
         )
 
         logger.debug("Checking if query returned a result")
@@ -758,6 +817,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 RETURN count(r)
             """,
             parameters=cls._query_builder.parameters,
+            batch_manager=batch_manager,
         )
 
         logger.debug("Deleted %s relationships", results[0][0])
@@ -765,13 +825,19 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
 
     @classmethod
     @hooks
-    async def count(cls: Type[T], filters: Optional[RelationshipFilters] = None) -> int:
+    async def count(
+        cls: Type[T],
+        filters: Optional[RelationshipFilters] = None,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
+    ) -> int:
         """
         Counts all relationships which match the provided `filters` parameter.
 
         Args:
             filters (RelationshipFilters | None, optional): Expressions applied to the query. Defaults
                 to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Returns:
             int: The number of relationships matched by the query.
@@ -796,6 +862,7 @@ class RelationshipModel(ModelBase[RelationshipModelSettings]):
                 RETURN count(r)
             """,
             parameters=cls._query_builder.parameters,
+            batch_manager=batch_manager,
         )
 
         logger.debug("Checking if query returned a result")
