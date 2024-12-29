@@ -140,6 +140,8 @@ await query_results.consume()
 print(len(results))  ## 9 (if the database was empty before)
 ```
 
+Avoid running queries concurrently in one batch, as it is not an intended behavior of queries inside a transaction, and may lead to your code being stuck.
+
 Non-batch queries are concurrent by default.
 
 ### Using bookmarks (Enterprise Edition only)
