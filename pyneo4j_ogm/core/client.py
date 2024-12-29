@@ -73,6 +73,8 @@ class Pyneo4jClient:
 
     _builder: QueryBuilder
     _driver: Optional[AsyncDriver]
+    _session: Optional[AsyncSession]
+    _transaction: Optional[AsyncTransaction]
     _skip_constraints: bool
     _skip_indexes: bool
     _batch_enabled: bool
@@ -218,7 +220,7 @@ class Pyneo4jClient:
         query: str,
         parameters: Optional[Dict[str, Any]] = None,
         resolve_models: bool = True,
-        batch_manager: Optional["BatchManager"] = None
+        batch_manager: Optional["BatchManagerConcurrent"] = None
     ) -> Tuple[List[List[Any]], List[str]]:
         """
         Runs the provided cypher query with given parameters against the database.
@@ -228,8 +230,8 @@ class Pyneo4jClient:
             parameters (Dict[str, Any]): Parameters passed to the transaction. Defaults to `None`.
             resolve_models (bool, optional): Whether to try and resolve query results to their
                 corresponding database models or not. Defaults to `True`.
-            batch_manager (BatchManager, optional): Batch manager to refer to, for finding proper
-            transaction. Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): Batch manager to refer to, for finding proper
+                transaction and handling it in a concurrent way. Defaults to `None`.
 
         Returns:
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names
@@ -239,7 +241,12 @@ class Pyneo4jClient:
             parameters = {}
 
         logger.debug("Checking for open transaction")
-        if self._batch_enabled is True or batch_manager is not None:
+        if self._batch_enabled is True:
+            logger.debug("Batch enabled, opening transaction")
+            if getattr(self, "_session", None) is None or getattr(self, "_transaction", None) is None:
+                await self._begin_transaction()
+            transaction = self._transaction
+        elif batch_manager is not None:
             if getattr(batch_manager, "_session", None) is None or getattr(batch_manager, "_transaction", None) is None:
                 # Begin a new transaction if none is open
                 await batch_manager._begin_transaction()
@@ -643,6 +650,28 @@ class Pyneo4jClient:
         """
         return BatchManager(self)
 
+    def concurrent_batch(self) -> "BatchManagerConcurrent":
+        """
+        Combine multiple transactions into a batch transaction, which can be used concurrently with other
+            transactions, for example, in `asyncio.gather()` or in async endpoints.
+
+        Both client queries using the `.cypher()` method and all model methods called within the
+        context of the batch transaction will be combined into a single transaction. If any of the
+        queries fail, the entire batch transaction will be rolled back.
+
+        Returns:
+            BatchManager: A class for managing batch transaction which must be used with a `with`
+                statement and passed into any method as `batch_manager` arg, for example:
+                ```
+                async with client.concurrent_batch() as batch:
+                    await client.cypher(
+                        "CREATE (n:Node) SET n.name = $name", parameters={"name": f"TestName"},
+                        batch_manager=batch
+                    )
+                ```
+        """
+        return BatchManagerConcurrent(self)
+
     def use_bookmarks(self, bookmarks: Set[str]) -> "BookmarkManager":
         """
         Use bookmarks for the next transaction.
@@ -655,6 +684,45 @@ class Pyneo4jClient:
                 statement.
         """
         return BookmarkManager(self, bookmarks)
+
+    @ensure_connection
+    async def _begin_transaction(self) -> None:
+        """
+        Begin a new transaction from a session. If no session exists, a new one will be cerated.
+        """
+        if getattr(self, "_session", None):
+            raise TransactionInProgress()
+
+        logger.debug("Beginning new session")
+        self._session = cast(AsyncDriver, self._driver).session(bookmarks=self._used_bookmarks)
+        logger.debug("Session %s created", self._session)
+
+        logger.debug("Beginning new transaction for session %s", self._session)
+        self._transaction = await self._session.begin_transaction()
+        logger.debug("Transaction %s created", self._transaction)
+
+    @ensure_connection
+    async def _commit_transaction(self) -> None:
+        """
+        Commits the currently active transaction and closes it.
+        """
+        logger.debug("Committing transaction %s", self._transaction)
+        await cast(AsyncTransaction, self._transaction).commit()  # type: ignore
+        bookmarks = await cast(AsyncSession, self._session).last_bookmarks()
+        self.last_bookmarks = set(bookmarks.raw_values)
+
+        self._session = None
+        self._transaction = None
+
+    @ensure_connection
+    async def _rollback_transaction(self) -> None:
+        """
+        Rolls back the currently active transaction and closes it.
+        """
+        logger.debug("Rolling back transaction %s", self._transaction)
+        await cast(AsyncTransaction, self._transaction).rollback()  # type: ignore
+        self._session = None
+        self._transaction = None
 
     def _resolve_database_model(self, query_result: Any) -> Optional[Any]:
         """
@@ -779,6 +847,33 @@ class BatchManager:
     """
 
     _client: "Pyneo4jClient"
+
+    def __init__(self, client: "Pyneo4jClient") -> None:
+        self._client = client
+
+    async def __aenter__(self) -> None:
+        logger.info("Starting batch transaction")
+        self._client._batch_enabled = True
+        await self._client._begin_transaction()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_val:
+            await self._client._rollback_transaction()
+        else:
+            await self._client._commit_transaction()
+
+        logger.info("Batch transaction complete")
+        self._client._batch_enabled = False
+
+
+
+
+class BatchManagerConcurrent:
+    """
+    Class for handling batch transactions.
+    """
+
+    _client: "Pyneo4jClient"
     _session: Optional[AsyncSession]
     _transaction: Optional[AsyncTransaction]
 
@@ -787,7 +882,6 @@ class BatchManager:
 
     async def __aenter__(self) -> Self:
         logger.info("Starting batch transaction")
-        self._client._batch_enabled = True
         await self._begin_transaction()
         return self
 
@@ -798,7 +892,6 @@ class BatchManager:
             await self._commit_transaction()
 
         logger.info("Batch transaction complete")
-        self._client._batch_enabled = False
 
     @ensure_connection
     async def _begin_transaction(self) -> None:
@@ -808,11 +901,11 @@ class BatchManager:
         if getattr(self, "_session", None):
             raise TransactionInProgress()
 
-        logger.debug("Beginning new session")
+        logger.debug("Beginning new concurrent session")
         self._session = cast(AsyncDriver, self._client._driver).session(bookmarks=self._client._used_bookmarks)
         logger.debug("Session %s created", self._session)
 
-        logger.debug("Beginning new transaction for session %s", self._session)
+        logger.debug("Beginning new concurrent transaction for session %s", self._session)
         self._transaction = await self._session.begin_transaction()
         logger.debug("Transaction %s created", self._transaction)
 
@@ -821,7 +914,7 @@ class BatchManager:
         """
         Commits the currently active transaction and closes it.
         """
-        logger.debug("Committing transaction %s", self._transaction)
+        logger.debug("Committing concurrent transaction %s", self._transaction)
         await cast(AsyncTransaction, self._transaction).commit()  # type: ignore
         bookmarks = await cast(AsyncSession, self._session).last_bookmarks()
         self._client.last_bookmarks = set(bookmarks.raw_values)
@@ -834,7 +927,7 @@ class BatchManager:
         """
         Rolls back the currently active transaction and closes it.
         """
-        logger.debug("Rolling back transaction %s", self._transaction)
+        logger.debug("Rolling back concurrent transaction %s", self._transaction)
         await cast(AsyncTransaction, self._transaction).rollback()  # type: ignore
         self._session = None
         self._transaction = None

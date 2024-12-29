@@ -54,10 +54,10 @@ from pyneo4j_ogm.queries.types import (
 
 if TYPE_CHECKING:
     from pyneo4j_ogm.fields.relationship_property import RelationshipProperty
-    from pyneo4j_ogm.core.client import BatchManager
+    from pyneo4j_ogm.core.client import BatchManagerConcurrent
 else:
     RelationshipProperty = object
-    BatchManager = object
+    BatchManagerConcurrent = object
 
 P = ParamSpec("P")
 T = TypeVar("T", bound="NodeModel")
@@ -165,10 +165,14 @@ class NodeModel(ModelBase[NodeModelSettings]):
             cls._register_relationship_properties()
 
     @hooks
-    async def create(self: T, batch_manager: Optional[BatchManager] = None) -> T:
+    async def create(self: T, batch_manager: Optional[BatchManagerConcurrent] = None) -> T:
         """
         Creates a new node from the current instance. After the method is finished, a newly created
         instance is seen as `hydrated` and all methods can be called on it.
+
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -213,9 +217,13 @@ class NodeModel(ModelBase[NodeModelSettings]):
 
     @hooks
     @ensure_alive
-    async def update(self, batch_manager: Optional[BatchManager] = None) -> None:
+    async def update(self, batch_manager: Optional[BatchManagerConcurrent] = None) -> None:
         """
         Updates the corresponding node in the graph with the current instance values.
+
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -258,10 +266,14 @@ class NodeModel(ModelBase[NodeModelSettings]):
 
     @hooks
     @ensure_alive
-    async def delete(self, batch_manager: Optional[BatchManager] = None) -> None:
+    async def delete(self, batch_manager: Optional[BatchManagerConcurrent] = None) -> None:
         """
         Deletes the corresponding node in the graph and marks this instance as destroyed. If
         another method is called on this instance, an `InstanceDestroyed` will be raised.
+
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -289,9 +301,13 @@ class NodeModel(ModelBase[NodeModelSettings]):
 
     @hooks
     @ensure_alive
-    async def refresh(self, batch_manager: Optional[BatchManager] = None) -> None:
+    async def refresh(self, batch_manager: Optional[BatchManagerConcurrent] = None) -> None:
         """
         Refreshes the current instance with the corresponding values from the graph.
+
+        Args:
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -326,7 +342,7 @@ class NodeModel(ModelBase[NodeModelSettings]):
         options: Optional[QueryOptions] = None,
         auto_fetch_nodes: Optional[bool] = None,
         auto_fetch_models: Optional[List[Union[str, Type["NodeModel"]]]] = None,
-        batch_manager: Optional[BatchManager] = None,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> List[Union["NodeModel", Dict[str, Any]]]:
         """
         Gets all connected nodes which match the provided `filters` parameter over multiple hops.
@@ -341,8 +357,8 @@ class NodeModel(ModelBase[NodeModelSettings]):
                 identical option defined in `Settings`. Defaults to `None`.
             auto_fetch_models (List[Union[str, Type["NodeModel"]]], optional): A list of models to auto-fetch.
                 `auto_fetch_nodes` has to be set to `True` for this to have any effect. Defaults to `[]`.
-            batch_manager (BatchManager, optional): The batch manager to use for asyncio-safe concurrent batch queries.
-                Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+            batch queries. Defaults to `None`.
 
         Raises:
             InvalidFilters: If auto-fetch is enabled and no node labels are provided.
@@ -489,7 +505,7 @@ class NodeModel(ModelBase[NodeModelSettings]):
         auto_fetch_nodes: Optional[bool] = None,
         auto_fetch_models: Optional[List[Union[str, Type["NodeModel"]]]] = None,
         raise_on_empty: bool = False,
-        batch_manager: Optional[BatchManager] = None,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> Optional[Union[T, Dict[str, Any]]]:
         """
         Finds the first node that matches `filters` and returns it. If no matching node is found,
@@ -506,8 +522,8 @@ class NodeModel(ModelBase[NodeModelSettings]):
                 `auto_fetch_nodes` has to be set to `True` for this to have any effect. Defaults to `[]`.
             raise_on_empty (bool, optional): Whether to raise an `NoResultFound` if no match is found. Defaults to
                 `False`.
-            batch_manager (BatchManager, optional): The batch manager to use for asyncio-safe concurrent batch queries.
-                Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             InvalidFilters: If no filters or invalid filters are provided.
@@ -627,7 +643,7 @@ class NodeModel(ModelBase[NodeModelSettings]):
         options: Optional[QueryOptions] = None,
         auto_fetch_nodes: Optional[bool] = None,
         auto_fetch_models: Optional[List[Union[str, Type["NodeModel"]]]] = None,
-        batch_manager: Optional[BatchManager] = None,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> List[Union[T, Dict[str, Any]]]:
         """
         Finds the all nodes that matches `filters` and returns them. If no matches are found, an
@@ -643,8 +659,8 @@ class NodeModel(ModelBase[NodeModelSettings]):
                 identical option defined in `Settings`. Defaults to `None`.
             auto_fetch_models (List[Union[str, Type["NodeModel"]]], optional): A list of models to auto-fetch.
                 `auto_fetch_nodes` has to be set to `True` for this to have any effect. Defaults to `[]`.
-            batch_manager (BatchManager, optional): The batch manager to use for asyncio-safe concurrent batch queries.
-                Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Returns:
             List[T | Dict[str, Any]]: A list of model instances or dictionaries of the projected properties.
@@ -757,7 +773,7 @@ class NodeModel(ModelBase[NodeModelSettings]):
         filters: NodeFilters,
         new: bool = False,
         raise_on_empty: bool = False,
-        batch_manager: Optional[BatchManager] = None,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> Optional[T]:
         """
         Finds the first node that matches `filters` and updates it with the values defined by
@@ -858,7 +874,7 @@ class NodeModel(ModelBase[NodeModelSettings]):
         update: Dict[str, Any],
         filters: Optional[NodeFilters] = None,
         new: bool = False,
-        batch_manager: Optional[BatchManager] = None,
+        batch_manager: Optional[BatchManagerConcurrent] = None,
     ) -> List[T]:
         """
         Finds all nodes that match `filters` and updates them with the values defined by `update`.
@@ -868,8 +884,8 @@ class NodeModel(ModelBase[NodeModelSettings]):
             filters (NodeFilters, optional): The filters to apply to the query. Defaults to `None`.
             new (bool, optional): Whether to return the updated nodes. By default, the old nodes
                 is returned. Defaults to `False`.
-            batch_manager (BatchManager, optional): The batch manager to use for asyncio-safe concurrent batch queries.
-                Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Returns:
             List[T]: By default, the old node instances are returned. If `new` is set to `True`,
@@ -950,7 +966,7 @@ class NodeModel(ModelBase[NodeModelSettings]):
         cls: Type[T],
         filters: NodeFilters,
         raise_on_empty: bool = False,
-        batch_manager: Optional[BatchManager] = None
+        batch_manager: Optional[BatchManagerConcurrent] = None
     ) -> int:
         """
         Finds the first node that matches `filters` and deletes it. If no match is found, a
@@ -960,8 +976,8 @@ class NodeModel(ModelBase[NodeModelSettings]):
             filters (NodeFilters): The filters to apply to the query.
             raise_on_empty (bool, optional): Whether to raise an `NoResultFound` if no match is found. Defaults to
                 `False`.
-            batch_manager (BatchManager, optional): The batch manager to use for asyncio-safe concurrent batch queries.
-                Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Raises:
             UnexpectedEmptyResult: If the query should return a result but does not.
@@ -1009,15 +1025,15 @@ class NodeModel(ModelBase[NodeModelSettings]):
     async def delete_many(
         cls: Type[T],
         filters: Optional[NodeFilters] = None,
-        batch_manager: Optional[BatchManager] = None
+        batch_manager: Optional[BatchManagerConcurrent] = None
     ) -> int:
         """
         Finds all nodes that match `filters` and deletes them.
 
         Args:
             filters (NodeFilters, optional): The filters to apply to the query. Defaults to `None`.
-            batch_manager (BatchManager, optional): The batch manager to use for asyncio-safe concurrent batch queries.
-                Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Returns:
             int: The number of deleted nodes.
@@ -1050,15 +1066,15 @@ class NodeModel(ModelBase[NodeModelSettings]):
     async def count(
         cls: Type[T],
         filters: Optional[NodeFilters] = None,
-        batch_manager: Optional[BatchManager] = None
+        batch_manager: Optional[BatchManagerConcurrent] = None
     ) -> int:
         """
         Counts all nodes which match the provided `filters` parameter.
 
         Args:
             filters (NodeFilters, optional): The filters to apply to the query. Defaults to `None`.
-            batch_manager (BatchManager, optional): The batch manager to use for asyncio-safe concurrent batch queries.
-                Defaults to `None`.
+            batch_manager (BatchManagerConcurrent, optional): The batch manager to use for asyncio-safe concurrent
+                batch queries. Defaults to `None`.
 
         Returns:
             int: The number of nodes matched by the query.
