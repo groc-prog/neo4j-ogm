@@ -16,6 +16,10 @@ class RelationshipModel(ModelBase):
     """
 
     ogm_config: ClassVar[RelationshipConfig]
+    """
+    Configuration for the pyneo4j model, should be a dictionary conforming to [`RelationshipConfig`][pyneo4j_ogm.options.model_options.RelationshipConfig].
+    """
+
     _ogm_config: ClassVar[ValidatedRelationshipConfiguration]
 
     def __init_subclass__(cls, **kwargs):
@@ -30,3 +34,7 @@ class RelationshipModel(ModelBase):
             cls.ogm_config["type"] = cls.__name__.upper()
 
         cls._ogm_config = parse_obj(ValidatedRelationshipConfiguration, cls.ogm_config)
+
+    @classmethod
+    def pyneo4j_config(cls) -> ValidatedRelationshipConfiguration:
+        return cls._ogm_config

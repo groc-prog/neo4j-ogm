@@ -16,6 +16,10 @@ class NodeModel(ModelBase):
     """
 
     ogm_config: ClassVar[NodeConfig]
+    """
+    Configuration for the pyneo4j model, should be a dictionary conforming to [`NodeConfig`][pyneo4j_ogm.options.model_options.NodeConfig].
+    """
+
     _ogm_config: ClassVar[ValidatedNodeConfiguration]
 
     def __init_subclass__(cls, **kwargs):
@@ -39,3 +43,7 @@ class NodeModel(ModelBase):
                     cast(List[str], cls.ogm_config["labels"]).append(label)
 
         cls._ogm_config = parse_obj(ValidatedNodeConfiguration, cls.ogm_config)
+
+    @classmethod
+    def pyneo4j_config(cls) -> ValidatedNodeConfiguration:
+        return cls._ogm_config
