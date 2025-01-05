@@ -54,7 +54,7 @@ class ModelConfigurationValidator(BaseModel):
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)
-    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.DEFAULT)
+    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.COMBINED)
     labels: List[str] = Field([])
     type: str = Field("")
 
@@ -117,7 +117,7 @@ class ValidatedNodeConfiguration(BaseModel):
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)
-    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.DEFAULT)
+    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.COMBINED)
     labels: List[str] = Field([])
 
 
@@ -131,5 +131,22 @@ class ValidatedRelationshipConfiguration(BaseModel):
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)
-    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.DEFAULT)
+    eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.COMBINED)
     type: str = Field("")
+
+    if IS_PYDANTIC_V2:
+
+        @field_validator("type")
+        @classmethod
+        def normalize_type_pydantic_v2(cls, value: Any):
+            return cls.__normalize_type(value)
+
+    else:
+
+        @validator("type")
+        def normalize_type_pydantic_v1(cls, value: Any):
+            return cls.__normalize_type(value)
+
+    @classmethod
+    def __normalize_type(cls, value: str) -> str:
+        return value.upper()

@@ -26,5 +26,5 @@ class EagerFetchStrategy(Enum):
     Available strategies used when eagerly fetching neighboring nodes.
     """
 
-    DEFAULT = 0
+    COMBINED = 0
     AS_SPLIT_QUERY = 1
