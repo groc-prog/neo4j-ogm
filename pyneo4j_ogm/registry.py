@@ -2,6 +2,7 @@ import threading
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Generator, Optional, Set, cast
 
+from pyneo4j_ogm.exceptions import NoClientFoundError
 from pyneo4j_ogm.logger import logger
 
 if TYPE_CHECKING:
@@ -30,14 +31,21 @@ class Registry:
         return cast(Registry, getattr(cls._thread_ctx, "instance"))
 
     @property
-    def active_client(self) -> Optional[Pyneo4jClient]:
+    def active_client(self) -> Pyneo4jClient:
         """
         Gets the currently active client. Each thread has it's own active client and registry.
 
+        Raises:
+            NoClientFoundError: If no client is available.
+
         Returns:
-            Optional[Pyneo4jClient]: Either the currently active client or `None` if no clients are available.
+            Pyneo4jClient: The currently active client.
         """
-        return getattr(self._thread_ctx, "active_client", None)
+        client = getattr(self._thread_ctx, "active_client", None)
+        if client is None:
+            raise NoClientFoundError()
+
+        return client
 
     def register(self, client: Pyneo4jClient) -> None:
         """
