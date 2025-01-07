@@ -1,14 +1,10 @@
 from abc import abstractmethod
 from copy import deepcopy
-from typing import Any, Dict, List, Set, Union, cast
+from typing import Any, Dict, List, Set, cast
 
 from pydantic import BaseModel, PrivateAttr
 
-from pyneo4j_ogm.options.model_options import (
-    ModelConfigurationValidator,
-    ValidatedNodeConfiguration,
-    ValidatedRelationshipConfiguration,
-)
+from pyneo4j_ogm.options.model_options import ModelConfigurationValidator
 from pyneo4j_ogm.pydantic import get_model_dump
 from pyneo4j_ogm.registry import Registry
 
@@ -38,6 +34,17 @@ class ModelBase(BaseModel):
         setattr(cls, "ogm_config", get_model_dump(ModelConfigurationValidator(**merged_config)))
 
     @classmethod
+    @abstractmethod
+    def pyneo4j_config(cls):
+        """
+        Returns the validated OGM model configuration.
+
+        Returns:
+            The validated configuration for either the node or relationship model.
+        """
+        pass  # pragma: no cover
+
+    @classmethod
     def __merge_config(cls, current_config: Dict[str, Any], updated_config: Dict[str, Any]) -> Dict[str, Any]:
         merged_config = deepcopy(current_config)
 
@@ -58,14 +65,3 @@ class ModelBase(BaseModel):
                 merged_config[key] = value
 
         return merged_config
-
-    @classmethod
-    @abstractmethod
-    def pyneo4j_config(cls):
-        """
-        Returns the validated OGM model configuration.
-
-        Returns:
-            The validated configuration for either the node or relationship model.
-        """
-        pass  # pragma: no cover
