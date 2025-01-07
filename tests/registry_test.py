@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from pyneo4j_ogm.clients.base import Pyneo4jClient
+from pyneo4j_ogm.exceptions import NoClientFoundError
 from pyneo4j_ogm.registry import Registry, with_client
 
 
@@ -95,14 +96,14 @@ class TestRegistry:
 
         registry.deregister(client)
 
-        assert registry.active_client is None
+        assert getattr(registry._thread_ctx, "active_client") is None
 
     def test_deregister_unregistered_client(self, registry):
         client = MagicMock(spec=Pyneo4jClient)
 
         registry.deregister(client)
 
-        assert registry.active_client is None
+        assert getattr(registry._thread_ctx, "active_client") is None
 
     def test_set_active_client(self, registry):
         client = MagicMock(spec=Pyneo4jClient)
@@ -124,7 +125,11 @@ class TestRegistry:
 
         registry.set_active_client(None)
 
-        assert registry.active_client is None
+        assert getattr(registry._thread_ctx, "active_client") is None
+
+    def test_raises_with_no_registered_client(self, registry):
+        with pytest.raises(NoClientFoundError):
+            _ = registry.active_client
 
 
 class TestRegistryMultiThreaded:
@@ -319,6 +324,6 @@ class TestWithClientFunction:
     def test_with_client_invalid_client(self):
         invalid_client = MagicMock(spec=Pyneo4jClient)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(NoClientFoundError):
             with with_client(invalid_client):
                 pass
