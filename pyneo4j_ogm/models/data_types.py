@@ -20,21 +20,9 @@ class NativeDateTimeAnnotation:
                 core_schema.no_info_plain_validator_function(DateTime.from_iso_format),
             ]
         )
-        from_timestamp_schema = core_schema.chain_schema(
-            [
-                core_schema.float_schema(),
-                core_schema.no_info_plain_validator_function(DateTime.from_timestamp),
-            ]
-        )
-        from_ordinal_schema = core_schema.chain_schema(
-            [
-                core_schema.int_schema(),
-                core_schema.no_info_plain_validator_function(DateTime.from_ordinal),
-            ]
-        )
 
         return core_schema.json_or_python_schema(
-            json_schema=core_schema.union_schema([from_iso_format_schema, from_timestamp_schema, from_ordinal_schema]),
+            json_schema=core_schema.union_schema([from_iso_format_schema]),
             python_schema=core_schema.union_schema(
                 [
                     core_schema.is_instance_schema(DateTime),
@@ -45,8 +33,6 @@ class NativeDateTimeAnnotation:
                         ]
                     ),
                     from_iso_format_schema,
-                    from_timestamp_schema,
-                    from_ordinal_schema,
                 ]
             ),
             serialization=core_schema.plain_serializer_function_ser_schema(
@@ -72,21 +58,9 @@ class NativeDateAnnotation:
                 core_schema.no_info_plain_validator_function(Date.from_iso_format),
             ]
         )
-        from_timestamp_schema = core_schema.chain_schema(
-            [
-                core_schema.float_schema(),
-                core_schema.no_info_plain_validator_function(Date.from_timestamp),
-            ]
-        )
-        from_ordinal_schema = core_schema.chain_schema(
-            [
-                core_schema.int_schema(),
-                core_schema.no_info_plain_validator_function(Date.from_ordinal),
-            ]
-        )
 
         return core_schema.json_or_python_schema(
-            json_schema=core_schema.union_schema([from_iso_format_schema, from_timestamp_schema, from_ordinal_schema]),
+            json_schema=core_schema.union_schema([from_iso_format_schema]),
             python_schema=core_schema.union_schema(
                 [
                     core_schema.is_instance_schema(Date),
@@ -97,8 +71,6 @@ class NativeDateAnnotation:
                         ]
                     ),
                     from_iso_format_schema,
-                    from_timestamp_schema,
-                    from_ordinal_schema,
                 ]
             ),
             serialization=core_schema.plain_serializer_function_ser_schema(
@@ -124,15 +96,9 @@ class NativeTimeAnnotation:
                 core_schema.no_info_plain_validator_function(Time.from_iso_format),
             ]
         )
-        from_ticks_schema = core_schema.chain_schema(
-            [
-                core_schema.int_schema(),
-                core_schema.no_info_plain_validator_function(Time.from_ticks),
-            ]
-        )
 
         return core_schema.json_or_python_schema(
-            json_schema=core_schema.union_schema([from_iso_format_schema, from_ticks_schema]),
+            json_schema=core_schema.union_schema([from_iso_format_schema]),
             python_schema=core_schema.union_schema(
                 [
                     core_schema.is_instance_schema(Time),
@@ -143,7 +109,6 @@ class NativeTimeAnnotation:
                         ]
                     ),
                     from_iso_format_schema,
-                    from_ticks_schema,
                 ]
             ),
             serialization=core_schema.plain_serializer_function_ser_schema(
@@ -185,7 +150,7 @@ class NativeDurationAnnotation:
 
     @classmethod
     def __get_pydantic_json_schema__(cls, _: core_schema.CoreSchema, handler: GetJsonSchemaHandler) -> JsonSchemaValue:
-        return handler(core_schema.datetime_schema())
+        return handler(core_schema.timedelta_schema())
 
 
 NativeDateTime = Annotated[DateTime, NativeDateTimeAnnotation]
