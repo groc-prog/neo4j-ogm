@@ -8,7 +8,7 @@ from pydantic_core import core_schema
 
 class NativeDateTimeAnnotation:
     """
-    Pydantic-compatible annotation for the Neo4j native DateTime class.
+    Pydantic-compatible implementation of the Neo4j `DateTime` class.
     """
 
     @classmethod
@@ -22,7 +22,7 @@ class NativeDateTimeAnnotation:
         )
 
         return core_schema.json_or_python_schema(
-            json_schema=core_schema.union_schema([from_iso_format_schema]),
+            json_schema=from_iso_format_schema,
             python_schema=core_schema.union_schema(
                 [
                     core_schema.is_instance_schema(DateTime),
@@ -47,7 +47,7 @@ class NativeDateTimeAnnotation:
 
 class NativeDateAnnotation:
     """
-    Pydantic-compatible annotation for the Neo4j native Date class.
+    Pydantic-compatible implementation of the Neo4j `Date` class.
     """
 
     @classmethod
@@ -60,7 +60,7 @@ class NativeDateAnnotation:
         )
 
         return core_schema.json_or_python_schema(
-            json_schema=core_schema.union_schema([from_iso_format_schema]),
+            json_schema=from_iso_format_schema,
             python_schema=core_schema.union_schema(
                 [
                     core_schema.is_instance_schema(Date),
@@ -85,7 +85,7 @@ class NativeDateAnnotation:
 
 class NativeTimeAnnotation:
     """
-    Pydantic-compatible annotation for the Neo4j native Time class.
+    Pydantic-compatible implementation of the Neo4j `Time` class.
     """
 
     @classmethod
@@ -98,7 +98,7 @@ class NativeTimeAnnotation:
         )
 
         return core_schema.json_or_python_schema(
-            json_schema=core_schema.union_schema([from_iso_format_schema]),
+            json_schema=from_iso_format_schema,
             python_schema=core_schema.union_schema(
                 [
                     core_schema.is_instance_schema(Time),
@@ -123,7 +123,7 @@ class NativeTimeAnnotation:
 
 class NativeDurationAnnotation:
     """
-    Pydantic-compatible annotation for the Neo4j native Duration class.
+    Pydantic-compatible implementation of the Neo4j `Duration` class.
     """
 
     @classmethod
@@ -136,7 +136,7 @@ class NativeDurationAnnotation:
         )
 
         return core_schema.json_or_python_schema(
-            json_schema=core_schema.union_schema([from_iso_format_schema]),
+            json_schema=from_iso_format_schema,
             python_schema=core_schema.union_schema(
                 [
                     core_schema.is_instance_schema(Duration),
