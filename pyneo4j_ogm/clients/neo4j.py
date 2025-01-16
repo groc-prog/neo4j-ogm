@@ -78,6 +78,19 @@ class Neo4jClient(Pyneo4jClient):
     """
 
     _version: Optional[str]
+    _allow_nested_properties: bool
+
+    async def connect(
+        self,
+        uri: str,
+        *args,
+        skip_constraints: bool = False,
+        skip_indexes: bool = False,
+        allow_nested_properties: bool = True,
+        **kwargs,
+    ) -> Self:
+        self._allow_nested_properties = allow_nested_properties
+        return await self.connect(uri, *args, skip_constraints, skip_indexes, **kwargs)
 
     @ensure_initialized
     async def drop_constraints(self) -> Self:
