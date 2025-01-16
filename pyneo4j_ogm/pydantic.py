@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, List, Tuple, Type, TypeVar, Union
 
 from pydantic import VERSION, BaseModel
@@ -109,8 +110,75 @@ def get_model_dump(model: BaseModel, *args, **kwargs):
     return model.dict(*args, **kwargs)
 
 
-def parse_obj(model: Type[T], obj: Any) -> T:
-    if IS_PYDANTIC_V2:
-        return model.model_validate(obj)
+def get_model_dump_json(model: BaseModel, *args, **kwargs):
+    """
+    Returns the model as a JSON string using Pydantic's `model_dump_json` or `json` methods.
+    This method also accepts all arguments the Pydantic method accepts.
 
-    return model.parse_obj(obj)
+    Args:
+        model (BaseModel): The model to dump.
+
+    Returns:
+        Dict[Any, Any]: The dumped model.
+    """
+    if IS_PYDANTIC_V2:
+        return model.model_dump_json(*args, **kwargs)
+
+    return model.json(*args, **kwargs)
+
+
+def get_model_schema(model: BaseModel, *args, **kwargs):
+    """
+    Returns the model's JSON schema using Pydantic's `model_json_schema` or `schema_json` methods.
+    This method also accepts all arguments the Pydantic method accepts.
+
+    Args:
+        model (BaseModel): The model to dump.
+
+    Returns:
+        Dict[Any, Any]: The dumped model.
+    """
+    if IS_PYDANTIC_V2:
+        return model.model_json_schema(*args, **kwargs)
+
+    return json.loads(model.schema_json(*args, **kwargs))
+
+
+def parse_obj(model: Type[T], obj: Any, *args, **kwargs) -> T:
+    """
+    Parses a model from a object. Compatible with both Pydantic V1 and V2.
+
+    Args:
+        model (Type[T]): The model to parse the object to.
+        obj (Any): The object to parse.
+
+    Raises:
+        ValidationError: If the object could not be validated.
+
+    Returns:
+        T: The parsed model.
+    """
+    if IS_PYDANTIC_V2:
+        return model.model_validate(obj, *args, **kwargs)
+
+    return model.parse_obj(obj, *args, **kwargs)
+
+
+def parse_json(model: Type[T], json: str, *args, **kwargs) -> T:
+    """
+    Parses a model from a JSON string. Compatible with both Pydantic V1 and V2.
+
+    Args:
+        model (Type[T]): The model to parse the JSON string to.
+        obj (Any): The JSON string to parse.
+
+    Raises:
+        ValidationError: If the JSON string could not be validated.
+
+    Returns:
+        T: The parsed model.
+    """
+    if IS_PYDANTIC_V2:
+        return model.model_validate_json(json, *args, **kwargs)
+
+    return model.parse_raw(json, *args, **kwargs)
