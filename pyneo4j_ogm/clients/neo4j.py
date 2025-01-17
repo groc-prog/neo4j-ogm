@@ -90,7 +90,7 @@ class Neo4jClient(Pyneo4jClient):
         **kwargs,
     ) -> Self:
         self._allow_nested_properties = allow_nested_properties
-        return await self.connect(uri, *args, skip_constraints, skip_indexes, **kwargs)
+        return await super().connect(uri, *args, skip_constraints=skip_constraints, skip_indexes=skip_indexes, **kwargs)
 
     @ensure_initialized
     async def drop_constraints(self) -> Self:
