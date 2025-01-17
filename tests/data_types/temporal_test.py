@@ -34,9 +34,7 @@ class TimeModel(BaseModel):
 
 
 class DurationModel(BaseModel):
-    duration: Duration
-
-    model_config = {"arbitrary_types_allowed": True}
+    duration: NativeDuration
 
 
 class TestDateTime:
