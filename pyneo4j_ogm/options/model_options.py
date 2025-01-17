@@ -1,16 +1,10 @@
 from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing_extensions import TypedDict
 
-from pyneo4j_ogm.pydantic import IS_PYDANTIC_V2
 from pyneo4j_ogm.types.graph import EagerFetchStrategy
 from pyneo4j_ogm.types.model import Hooks
-
-if IS_PYDANTIC_V2:
-    from pydantic import field_validator
-else:
-    from pydantic import validator
 
 HookConfiguration = Union[Callable, Tuple[bool, Callable]]
 
@@ -58,30 +52,9 @@ class ModelConfigurationValidator(BaseModel):
     labels: List[str] = Field([])
     type: str = Field("")
 
-    if IS_PYDANTIC_V2:
-
-        @field_validator("pre_hooks", "post_hooks", mode="before")
-        @classmethod
-        def normalize_hooks_pydantic_v2(cls, value: Any):
-            return cls.__normalize_hooks(value)
-
-        @field_validator("labels", mode="before")
-        @classmethod
-        def normalize_labels_pydantic_v2(cls, value: Any):
-            return cls.__normalize_labels(value)
-
-    else:
-
-        @validator("pre_hooks", "post_hooks", pre=True)
-        def normalize_hooks_pydantic_v1(cls, value: Any):
-            return cls.__normalize_hooks(value)
-
-        @validator("labels", pre=True)
-        def normalize_labels_pydantic_v1(cls, value: Any):
-            return cls.__normalize_labels(value)
-
+    @field_validator("pre_hooks", "post_hooks", mode="before")
     @classmethod
-    def __normalize_hooks(cls, value: Any) -> Dict[str, List[Callable]]:
+    def normalize_hooks_pydantic_v2(cls, value: Any):
         if not isinstance(value, dict):
             raise ValueError("Hooks must be a dictionary")
 
@@ -94,8 +67,9 @@ class ModelConfigurationValidator(BaseModel):
 
         return normalized
 
+    @field_validator("labels", mode="before")
     @classmethod
-    def __normalize_labels(cls, value: Any) -> List[str]:
+    def normalize_labels_pydantic_v2(cls, value: Any):
         if not isinstance(value, (str, list, set)):
             raise ValueError("Labels must be string|list|set")
 
@@ -134,19 +108,7 @@ class ValidatedRelationshipConfiguration(BaseModel):
     eager_fetch_strategy: EagerFetchStrategy = Field(EagerFetchStrategy.COMBINED)
     type: str = Field("")
 
-    if IS_PYDANTIC_V2:
-
-        @field_validator("type")
-        @classmethod
-        def normalize_type_pydantic_v2(cls, value: Any):
-            return cls.__normalize_type(value)
-
-    else:
-
-        @validator("type")
-        def normalize_type_pydantic_v1(cls, value: Any):
-            return cls.__normalize_type(value)
-
+    @field_validator("type")
     @classmethod
-    def __normalize_type(cls, value: str) -> str:
+    def normalize_type_pydantic_v2(cls, value: Any):
         return value.upper()

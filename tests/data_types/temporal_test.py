@@ -12,13 +12,6 @@ from pyneo4j_ogm.data_types.temporal import (
     NativeDuration,
     NativeTime,
 )
-from pyneo4j_ogm.pydantic import (
-    get_model_dump,
-    get_model_dump_json,
-    get_model_schema,
-    parse_json,
-    parse_obj,
-)
 
 
 class DateTimeModel(BaseModel):
@@ -39,7 +32,9 @@ class DurationModel(BaseModel):
 
 class TestDateTime:
     def test_parsing_from_class(self):
-        model = parse_obj(DateTimeModel, {"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern"))})
+        model = DateTimeModel.model_validate(
+            {"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern"))}
+        )
 
         assert isinstance(model.datetime, DateTime)
         assert model.datetime.year == 2025
@@ -54,8 +49,8 @@ class TestDateTime:
         assert model.datetime.tzinfo.utcoffset(None) == pytz.timezone("US/Eastern").utcoffset(None)
 
     def test_parsing_from_str(self):
-        model = parse_obj(
-            DateTimeModel, {"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()}
+        model = DateTimeModel.model_validate(
+            {"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()}
         )
 
         assert isinstance(model.datetime, DateTime)
@@ -69,8 +64,8 @@ class TestDateTime:
         assert model.datetime.tzinfo is not None
 
     def test_parsing_from_native_datetime(self):
-        model = parse_obj(
-            DateTimeModel, {"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern")).to_native()}
+        model = DateTimeModel.model_validate(
+            {"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern")).to_native()}
         )
 
         assert isinstance(model.datetime, DateTime)
@@ -86,8 +81,7 @@ class TestDateTime:
         assert model.datetime.tzinfo.utcoffset(None) == pytz.timezone("US/Eastern").utcoffset(None)
 
     def test_parsing_from_json(self):
-        model = parse_json(
-            DateTimeModel,
+        model = DateTimeModel.model_validate_json(
             json.dumps({"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()}),
         )
 
@@ -102,8 +96,10 @@ class TestDateTime:
         assert model.datetime.tzinfo is not None
 
     def test_serializing(self):
-        model = parse_obj(DateTimeModel, {"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern"))})
-        serialized = get_model_dump(model)
+        model = DateTimeModel.model_validate(
+            {"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern"))}
+        )
+        serialized = model.model_dump()
 
         assert isinstance(serialized, dict)
         assert isinstance(serialized["datetime"], DateTime)
@@ -120,11 +116,10 @@ class TestDateTime:
         assert model.datetime.tzinfo.utcoffset(None) == serialized["datetime"].tzinfo.utcoffset(None)
 
     def test_serializing_json(self):
-        model = parse_json(
-            DateTimeModel,
+        model = DateTimeModel.model_validate_json(
             json.dumps({"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()}),
         )
-        serialized = get_model_dump_json(model)
+        serialized = model.model_dump_json()
         parsed_serialized = json.loads(serialized)
 
         assert isinstance(serialized, str)
@@ -132,11 +127,10 @@ class TestDateTime:
         assert parsed_serialized["datetime"] == "2025-01-01T01:01:01.000000001-06:56"
 
     def test_json_schema(self):
-        model = parse_json(
-            DateTimeModel,
+        model = DateTimeModel.model_validate_json(
             json.dumps({"datetime": DateTime(2025, 1, 1, 1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()}),
         )
-        schema = get_model_schema(model)
+        schema = model.model_json_schema()
 
         assert "datetime" in schema["properties"]
         assert schema["properties"]["datetime"]["type"] == "string"
@@ -145,7 +139,7 @@ class TestDateTime:
 
 class TestDate:
     def test_parsing_from_class(self):
-        model = parse_obj(DateModel, {"date": Date(2025, 1, 1)})
+        model = DateModel.model_validate({"date": Date(2025, 1, 1)})
 
         assert isinstance(model.date, Date)
         assert model.date.year == 2025
@@ -153,7 +147,7 @@ class TestDate:
         assert model.date.day == 1
 
     def test_parsing_from_str(self):
-        model = parse_obj(DateModel, {"date": Date(2025, 1, 1).iso_format()})
+        model = DateModel.model_validate({"date": Date(2025, 1, 1).iso_format()})
 
         assert isinstance(model.date, Date)
         assert model.date.year == 2025
@@ -161,7 +155,7 @@ class TestDate:
         assert model.date.day == 1
 
     def test_parsing_from_native_date(self):
-        model = parse_obj(DateModel, {"date": Date(2025, 1, 1).to_native()})
+        model = DateModel.model_validate({"date": Date(2025, 1, 1).to_native()})
 
         assert isinstance(model.date, Date)
         assert model.date.year == 2025
@@ -169,7 +163,7 @@ class TestDate:
         assert model.date.day == 1
 
     def test_parsing_from_json(self):
-        model = parse_json(DateModel, json.dumps({"date": Date(2025, 1, 1).iso_format()}))
+        model = DateModel.model_validate_json(json.dumps({"date": Date(2025, 1, 1).iso_format()}))
 
         assert isinstance(model.date, Date)
         assert model.date.year == 2025
@@ -177,8 +171,8 @@ class TestDate:
         assert model.date.day == 1
 
     def test_serializing(self):
-        model = parse_obj(DateModel, {"date": Date(2025, 1, 1)})
-        serialized = get_model_dump(model)
+        model = DateModel.model_validate({"date": Date(2025, 1, 1)})
+        serialized = model.model_dump()
 
         assert isinstance(serialized, dict)
         assert isinstance(serialized["date"], Date)
@@ -187,8 +181,8 @@ class TestDate:
         assert model.date.day == serialized["date"].day
 
     def test_serializing_json(self):
-        model = parse_json(DateModel, json.dumps({"date": Date(2025, 1, 1).iso_format()}))
-        serialized = get_model_dump_json(model)
+        model = DateModel.model_validate_json(json.dumps({"date": Date(2025, 1, 1).iso_format()}))
+        serialized = model.model_dump_json()
         parsed_serialized = json.loads(serialized)
 
         assert isinstance(serialized, str)
@@ -196,8 +190,8 @@ class TestDate:
         assert parsed_serialized["date"] == "2025-01-01"
 
     def test_json_schema(self):
-        model = parse_json(DateModel, json.dumps({"date": Date(2025, 1, 1).iso_format()}))
-        schema = get_model_schema(model)
+        model = DateModel.model_validate_json(json.dumps({"date": Date(2025, 1, 1).iso_format()}))
+        schema = model.model_json_schema()
 
         assert "date" in schema["properties"]
         assert schema["properties"]["date"]["type"] == "string"
@@ -206,8 +200,7 @@ class TestDate:
 
 class TestTime:
     def test_parsing_from_class(self):
-        model = parse_obj(
-            TimeModel,
+        model = TimeModel.model_validate(
             {"time": Time(1, 1, 1, 1, pytz.timezone("US/Eastern"))},
         )
 
@@ -221,8 +214,7 @@ class TestTime:
         assert model.time.tzinfo.utcoffset(None) == pytz.timezone("US/Eastern").utcoffset(None)
 
     def test_parsing_from_str(self):
-        model = parse_obj(
-            TimeModel,
+        model = TimeModel.model_validate(
             {"time": Time(1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()},
         )
 
@@ -234,8 +226,7 @@ class TestTime:
         assert model.time.tzinfo is None
 
     def test_parsing_from_native_time(self):
-        model = parse_obj(
-            TimeModel,
+        model = TimeModel.model_validate(
             {"time": Time(1, 1, 1, 1, pytz.timezone("US/Eastern")).to_native()},
         )
 
@@ -249,8 +240,7 @@ class TestTime:
         assert model.time.tzinfo.utcoffset(None) == pytz.timezone("US/Eastern").utcoffset(None)
 
     def test_parsing_from_json(self):
-        model = parse_json(
-            TimeModel,
+        model = TimeModel.model_validate_json(
             json.dumps({"time": Time(1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()}),
         )
 
@@ -262,11 +252,10 @@ class TestTime:
         assert model.time.tzinfo is None
 
     def test_serializing(self):
-        model = parse_obj(
-            TimeModel,
+        model = TimeModel.model_validate(
             {"time": Time(1, 1, 1, 1, pytz.timezone("US/Eastern"))},
         )
-        serialized = get_model_dump(model)
+        serialized = model.model_dump()
 
         assert isinstance(serialized, dict)
         assert isinstance(serialized["time"], Time)
@@ -280,11 +269,10 @@ class TestTime:
         assert model.time.tzinfo.utcoffset(None) == serialized["time"].tzinfo.utcoffset(None)
 
     def test_serializing_json(self):
-        model = parse_json(
-            TimeModel,
+        model = TimeModel.model_validate_json(
             json.dumps({"time": Time(1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()}),
         )
-        serialized = get_model_dump_json(model)
+        serialized = model.model_dump_json()
         parsed_serialized = json.loads(serialized)
 
         assert isinstance(serialized, str)
@@ -292,11 +280,10 @@ class TestTime:
         assert parsed_serialized["time"] == "01:01:01.000000001"
 
     def test_json_schema(self):
-        model = parse_json(
-            TimeModel,
+        model = TimeModel.model_validate_json(
             json.dumps({"time": Time(1, 1, 1, 1, pytz.timezone("US/Eastern")).iso_format()}),
         )
-        schema = get_model_schema(model)
+        schema = model.model_json_schema()
 
         assert "time" in schema["properties"]
         assert schema["properties"]["time"]["type"] == "string"
@@ -305,7 +292,7 @@ class TestTime:
 
 class TestDuration:
     def test_parsing_from_class(self):
-        model = parse_obj(DurationModel, {"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)})
+        model = DurationModel.model_validate({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)})
 
         assert isinstance(model.duration, Duration)
         assert model.duration.years_months_days == (1, 1, 8)
@@ -316,7 +303,7 @@ class TestDuration:
         assert model.duration.nanoseconds == 1001001
 
     def test_parsing_from_str(self):
-        model = parse_obj(DurationModel, {"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1).iso_format()})
+        model = DurationModel.model_validate({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1).iso_format()})
 
         assert isinstance(model.duration, Duration)
         assert model.duration.years_months_days == (1, 1, 8)
@@ -327,7 +314,9 @@ class TestDuration:
         assert model.duration.nanoseconds == 1001001
 
     def test_parsing_from_json(self):
-        model = parse_json(DurationModel, json.dumps({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1).iso_format()}))
+        model = DurationModel.model_validate_json(
+            json.dumps({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1).iso_format()})
+        )
 
         assert isinstance(model.duration, Duration)
         assert model.duration.years_months_days == (1, 1, 8)
@@ -338,8 +327,8 @@ class TestDuration:
         assert model.duration.nanoseconds == 1001001
 
     def test_serializing(self):
-        model = parse_obj(DurationModel, {"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)})
-        serialized = get_model_dump(model)
+        model = DurationModel.model_validate({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)})
+        serialized = model.model_dump()
 
         assert isinstance(serialized, dict)
         assert isinstance(serialized["duration"], Duration)
@@ -353,8 +342,10 @@ class TestDuration:
         assert model.duration.nanoseconds == serialized["duration"].nanoseconds
 
     def test_serializing_json(self):
-        model = parse_json(DurationModel, json.dumps({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1).iso_format()}))
-        serialized = get_model_dump_json(model)
+        model = DurationModel.model_validate_json(
+            json.dumps({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1).iso_format()})
+        )
+        serialized = model.model_dump_json()
         parsed_serialized = json.loads(serialized)
 
         assert isinstance(serialized, str)
@@ -362,8 +353,10 @@ class TestDuration:
         assert parsed_serialized["duration"] == "P1Y1M8DT1H1M1.001001001S"
 
     def test_json_schema(self):
-        model = parse_json(DurationModel, json.dumps({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1).iso_format()}))
-        schema = get_model_schema(model)
+        model = DurationModel.model_validate_json(
+            json.dumps({"duration": Duration(1, 1, 1, 1, 1, 1, 1, 1, 1, 1).iso_format()})
+        )
+        schema = model.model_json_schema()
 
         assert "duration" in schema["properties"]
         assert schema["properties"]["duration"]["type"] == "string"

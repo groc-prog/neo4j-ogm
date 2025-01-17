@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Set, cast
 from pydantic import BaseModel, PrivateAttr
 
 from pyneo4j_ogm.options.model_options import ModelConfigurationValidator
-from pyneo4j_ogm.pydantic import get_model_dump
 from pyneo4j_ogm.registry import Registry
 
 
@@ -30,8 +29,8 @@ class ModelBase(BaseModel):
         )
         model_config = ModelConfigurationValidator(**getattr(cls, "ogm_config", {}))
 
-        merged_config = cls.__merge_config(get_model_dump(parent_config), get_model_dump(model_config))
-        setattr(cls, "ogm_config", get_model_dump(ModelConfigurationValidator(**merged_config)))
+        merged_config = cls.__merge_config(parent_config.model_dump(), model_config.model_dump())
+        setattr(cls, "ogm_config", ModelConfigurationValidator(**merged_config).model_dump())
 
     @classmethod
     @abstractmethod

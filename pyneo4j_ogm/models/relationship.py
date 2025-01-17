@@ -6,7 +6,6 @@ from pyneo4j_ogm.options.model_options import (
     RelationshipConfig,
     ValidatedRelationshipConfiguration,
 )
-from pyneo4j_ogm.pydantic import parse_obj
 
 
 class RelationshipModel(ModelBase):
@@ -33,7 +32,7 @@ class RelationshipModel(ModelBase):
         if ("type" in parent_config and parent_config["type"] == model_config.type) or len(model_config.type) == 0:
             cls.ogm_config["type"] = cls.__name__.upper()
 
-        cls._ogm_config = parse_obj(ValidatedRelationshipConfiguration, cls.ogm_config)
+        cls._ogm_config = ValidatedRelationshipConfiguration.model_validate(cls.ogm_config)
 
     @classmethod
     def pyneo4j_config(cls) -> ValidatedRelationshipConfiguration:

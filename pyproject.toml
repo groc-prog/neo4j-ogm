@@ -23,7 +23,7 @@ packages = [{ include = "pyneo4j_ogm" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-pydantic = ">=1.10,<3.0"
+pydantic = ">=2.0,<3.0"
 neo4j = "^5.9.0"
 typing-extensions = "^4.8.0"
 argparse = "^1.4.0"

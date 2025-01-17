@@ -6,7 +6,6 @@ from pyneo4j_ogm.options.model_options import (
     NodeConfig,
     ValidatedNodeConfiguration,
 )
-from pyneo4j_ogm.pydantic import parse_obj
 
 
 class NodeModel(ModelBase):
@@ -42,7 +41,7 @@ class NodeModel(ModelBase):
                 if label not in cls.ogm_config["labels"]:
                     cast(List[str], cls.ogm_config["labels"]).append(label)
 
-        cls._ogm_config = parse_obj(ValidatedNodeConfiguration, cls.ogm_config)
+        cls._ogm_config = ValidatedNodeConfiguration.model_validate(cls.ogm_config)
 
     @classmethod
     def pyneo4j_config(cls) -> ValidatedNodeConfiguration:

@@ -15,7 +15,7 @@ from pyneo4j_ogm.options.field_options import (
     PropertyIndex,
     UniquenessConstraint,
 )
-from pyneo4j_ogm.pydantic import get_field_options, get_model_fields
+from pyneo4j_ogm.pydantic import get_field_options
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.types.graph import EntityType
 from pyneo4j_ogm.types.memgraph import (
@@ -275,7 +275,7 @@ class MemgraphClient(Pyneo4jClient):
             # This mapping will hold all indexes and constraints we have to create
             mapping: ModelInitializationMapping = {}
 
-            for field_name, field in get_model_fields(model).items():
+            for field_name, field in model.model_fields.items():
                 _, options = get_field_options(field)
                 self.__generate_options_mapping(model, field_name, options, mapping)
 
