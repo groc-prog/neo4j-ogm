@@ -38,7 +38,13 @@ The package was already pretty well tested, but from the next release on there w
 
 ## Pydantic support
 
-As it is the case now, Pydantic support for both 1.x and 2.x `will remain for the foreseeable future`.
+~~As it is the case now, Pydantic support for both 1.x and 2.x `will remain for the foreseeable future`~~.
+
+Since Pydantic has reached EOL as defined [here](https://docs.pydantic.dev/2.7/version-policy/?utm_source=chatgpt.com#pydantic-v1), we will drop support for V1 in the next major release. This also makes things easier on our end, regarding refactoring and new features.
+
+The migration guide for V1 to V2 can be found [here](https://docs.pydantic.dev/latest/migration/)
+
+> **Note**: For those of you who are still using V1 of Pydantic - it's 2025 now and most users will not experience a lot of migration issues (especially when using Pydantic for basic data validation like in REST API's).
 
 Pydantic does a lot of the validation/serialization work, and it might even help with automated migrations in the future (but we will see where this goes).
 
