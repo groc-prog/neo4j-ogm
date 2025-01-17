@@ -164,13 +164,13 @@ def parse_obj(model: Type[T], obj: Any, *args, **kwargs) -> T:
     return model.parse_obj(obj, *args, **kwargs)
 
 
-def parse_json(model: Type[T], json: str, *args, **kwargs) -> T:
+def parse_json(model: Type[T], json_str: str, *args, **kwargs) -> T:
     """
     Parses a model from a JSON string. Compatible with both Pydantic V1 and V2.
 
     Args:
         model (Type[T]): The model to parse the JSON string to.
-        obj (Any): The JSON string to parse.
+        json_str (str): The JSON string to parse.
 
     Raises:
         ValidationError: If the JSON string could not be validated.
@@ -179,6 +179,6 @@ def parse_json(model: Type[T], json: str, *args, **kwargs) -> T:
         T: The parsed model.
     """
     if IS_PYDANTIC_V2:
-        return model.model_validate_json(json, *args, **kwargs)
+        return model.model_validate_json(json_str, *args, **kwargs)
 
-    return model.parse_raw(json, *args, **kwargs)
+    return model.parse_raw(json_str, *args, **kwargs)
