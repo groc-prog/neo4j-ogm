@@ -315,6 +315,26 @@ class MemgraphClient(Pyneo4jClient):
         options: List[Union[UniquenessConstraint, PointIndex, PropertyIndex, DataTypeConstraint, ExistenceConstraint]],
         mapping: ModelInitializationMapping,
     ) -> None:
+        """
+        Generates a mapping of options for a given model and field.
+
+        This method processes a list of options, such as constraints and indexes, and updates
+        the provided `mapping` object with configuration details. It supports both node and
+        relationship models, handling properties like composite keys, data types, and labels.
+
+        Args:
+            model (Union[Type[NodeModel], Type[RelationshipModel]]): The model class to which the field belongs.
+                Must be a subclass of either `NodeModel` or `RelationshipModel`.
+            field_name (str): The name of the field to which the options apply.
+            options (List[Union[UniquenessConstraint, PointIndex, PropertyIndex, DataTypeConstraint, ExistenceConstraint]]):
+                A list of options specifying constraints or indexes to be applied to the field.
+            mapping (ModelInitializationMapping): The mapping object that will be updated with the processed options.
+
+        Raises:
+            ValueError: If a specified label for an option is not valid for the given model.
+            ValueError: If multiple conflicting data types are defined for a field with a `DataTypeConstraint`.
+            ValueError: If conflicting labels or types are provided for a composite key.
+        """
         is_node_model = issubclass(model, NodeModel)
 
         for option in options:

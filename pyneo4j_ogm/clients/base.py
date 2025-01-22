@@ -26,8 +26,8 @@ from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession, AsyncTransactio
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
     ModelResolveError,
-    NoTransactionInProgress,
-    TransactionInProgress,
+    NoTransactionInProgressError,
+    TransactionInProgressError,
 )
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.models.node import NodeModel
@@ -45,7 +45,7 @@ def initialize_models_after(func):
             or asynchronous.
 
     Raises:
-        ClientNotInitializedError: The client is not initialized yet.
+        ClientNotInitializedError: If the client is not initialized yet.
 
     Returns:
         Callable: A wrapped function that includes additional functionality for both
@@ -76,7 +76,7 @@ def ensure_initialized(func):
         func (Callable): The function to be decorated.
 
     Raises:
-        ClientNotInitializedError: The client is not initialized yet.
+        ClientNotInitializedError: If the client is not initialized yet.
 
     Returns:
         A wrapped function that includes additional functionality.
@@ -105,6 +105,7 @@ class Pyneo4jClient(ABC):
     each client will implement it's own methods, which should follow a common naming scheme.
     """
 
+    _uri: Optional[str]
     _registry: Registry = Registry()
     _driver: Optional[AsyncDriver]
     _session: Optional[AsyncSession]
@@ -119,6 +120,7 @@ class Pyneo4jClient(ABC):
 
         logger.debug("Initializing client")
 
+        self._uri = None
         self._driver = None
         self._session = None
         self._transaction = None
@@ -149,15 +151,15 @@ class Pyneo4jClient(ABC):
         Checks if the connected database is running a supported version.
 
         Raises:
-            UnsupportedDatabaseVersionError: Connected to a database with a unsupported version.
+            UnsupportedDatabaseVersionError: If connected to a database with a unsupported version.
         """
         pass  # pragma: no cover
 
     @abstractmethod
     async def _initialize_models(self) -> None:
         """
-        Initializes all registered models by setting the defined indexes/constraints. This
-        method has to be implemented by each client because of differences in index/constraint
+        Initializes all registered models by validating them and setting the defined indexes/constraints.
+        This method has to be implemented by each client because of differences in index/constraint
         creation.
         """
         pass  # pragma: no cover
@@ -207,6 +209,7 @@ class Pyneo4jClient(ABC):
         Returns:
             Self: The client.
         """
+        self._uri = uri
         self._skip_constraint_creation = skip_constraints
         self._skip_index_creation = skip_indexes
 
@@ -227,10 +230,12 @@ class Pyneo4jClient(ABC):
         """
         Closes the connection to the database.
         """
-        logger.info("Closing database connection")
+        logger.info("Closing database connection to %s", self._uri)
         await cast(AsyncDriver, self._driver).close()
+
+        logger.info("Connection to database %s closed", self._uri)
         self._driver = None
-        logger.info("Connection to database closed")
+        self._uri = None
 
     @ensure_initialized
     async def cypher(
@@ -386,7 +391,7 @@ class Pyneo4jClient(ABC):
         logger.warning("Dropping all nodes and relationships")
         await self.cypher(f"MATCH {QueryBuilder.node_pattern("n")} DETACH DELETE n")
 
-        logger.info("All nodes and relationships deleted")
+        logger.info("All nodes and relationships dropped")
         return self
 
     @ensure_initialized
@@ -395,16 +400,16 @@ class Pyneo4jClient(ABC):
         Checks for existing sessions/transactions and begins new ones if none exist.
 
         Raises:
-            TransactionInProgress: A session/transaction is already in progress.
+            TransactionInProgress: If a session/transaction is already in progress.
         """
         if self._session is not None or self._transaction is not None:
-            raise TransactionInProgress()
+            raise TransactionInProgressError()
 
         logger.debug("Acquiring new session")
         self._session = cast(AsyncDriver, self._driver).session()
         logger.debug("Session %s acquired", self._session)
 
-        logger.debug("Starting new transaction for session %s", self._session)
+        logger.debug("Acquiring new transaction for session %s", self._session)
         self._transaction = await self._session.begin_transaction()
         logger.debug("Transaction %s for session %s acquired", self._transaction, self._session)
 
@@ -414,10 +419,10 @@ class Pyneo4jClient(ABC):
         Commits the current transaction and closes it.
 
         Raises:
-            NoTransactionInProgress: No active session/transaction to commit.
+            NoTransactionInProgress: If no active session/transaction to commit.
         """
         if self._session is None or self._transaction is None:
-            raise NoTransactionInProgress()
+            raise NoTransactionInProgressError()
 
         logger.debug("Committing transaction %s and closing session %s", self._transaction, self._session)
         await self._transaction.commit()
@@ -434,10 +439,10 @@ class Pyneo4jClient(ABC):
         Rolls the current transaction back and closes it.
 
         Raises:
-            NoTransactionInProgress: No active session/transaction to roll back.
+            NoTransactionInProgress: If no active session/transaction to roll back.
         """
         if self._session is None or self._transaction is None:
-            raise NoTransactionInProgress()
+            raise NoTransactionInProgressError()
 
         logger.debug("Rolling back transaction %s and closing session %s", self._transaction, self._session)
         await self._transaction.rollback()
@@ -470,7 +475,7 @@ class Pyneo4jClient(ABC):
                 a node/relationship fails. Defaults to `False`.
 
         Raises:
-            ModelResolveError: `raise_on_resolve_exc` is set to `True` and resolving a result fails.
+            ModelResolveError: If `raise_on_resolve_exc` is set to `True` and resolving a result fails.
 
         Returns:
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
@@ -539,7 +544,7 @@ class Pyneo4jClient(ABC):
                 a node/relationship fails. Defaults to `False`.
 
         Raises:
-            ModelResolveError: `raise_on_resolve_exc` is set to `True` and resolving a result fails.
+            ModelResolveError: If `raise_on_resolve_exc` is set to `True` and resolving a result fails.
 
         Returns:
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned

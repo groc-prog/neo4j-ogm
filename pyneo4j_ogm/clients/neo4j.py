@@ -390,6 +390,7 @@ class Neo4jClient(Pyneo4jClient):
     @ensure_initialized
     async def _initialize_models(self) -> None:
         for model in self._models:
+
             entity_type = EntityType.NODE if issubclass(model, NodeModel) else EntityType.RELATIONSHIP
 
             if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
@@ -454,8 +455,6 @@ class Neo4jClient(Pyneo4jClient):
                             mapped_option["properties"][0],
                         )
 
-            pass
-
     def __generate_options_mapping(
         self,
         model: Union[Type[NodeModel], Type[RelationshipModel]],
@@ -463,6 +462,26 @@ class Neo4jClient(Pyneo4jClient):
         options: List[Union[UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex]],
         mapping: ModelInitializationMapping,
     ) -> None:
+        """
+        Generates a mapping of options for a given model and field.
+
+        This method processes a list of options and populates the provided `mapping` object
+        with configuration details such as labels, properties, and constraints. It handles
+        both node and relationship models, ensuring that index and constraint configurations
+        are appropriately applied.
+
+        Args:
+            model (Union[Type[NodeModel], Type[RelationshipModel]]): The model class to which the field belongs.
+                Must be a subclass of either `NodeModel` or `RelationshipModel`.
+            field_name (str): The name of the field to which the options apply.
+            options (List[Union[UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex]]):
+                A list of options specifying constraints or indexes to be applied to the field.
+            mapping (ModelInitializationMapping): The mapping object that will be updated with the processed options.
+
+        Raises:
+            ValueError: If a specified label for an option is not valid for the given model.
+            ValueError: If conflicting labels are provided for a composite key.
+        """
         is_node_model = issubclass(model, NodeModel)
 
         for option in options:
