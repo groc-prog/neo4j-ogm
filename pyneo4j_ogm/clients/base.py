@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import inspect
 import os
@@ -25,6 +26,7 @@ from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession, AsyncTransactio
 
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
+    DuplicateModelError,
     ModelResolveError,
     NoTransactionInProgressError,
     TransactionInProgressError,
@@ -110,8 +112,9 @@ class Pyneo4jClient(ABC):
     _driver: Optional[AsyncDriver]
     _session: Optional[AsyncSession]
     _transaction: Optional[AsyncTransaction]
-    _using_batches: bool
     _models: Set[Union[Type[NodeModel], Type[RelationshipModel]]]
+    _registered_hashes: Dict[str, Union[Type[NodeModel], Type[RelationshipModel]]]
+    _using_batching: bool
     _skip_constraint_creation: bool
     _skip_index_creation: bool
 
@@ -127,7 +130,7 @@ class Pyneo4jClient(ABC):
         self._models = set()
         self._skip_constraint_creation = False
         self._skip_index_creation = False
-        self._using_batches = False
+        self._using_batching = False
 
         self._registry.register(self)
 
@@ -306,6 +309,8 @@ class Pyneo4jClient(ABC):
             if not issubclass(model, (NodeModel, RelationshipModel)):
                 continue
 
+            self.__ensure_unique_model_identifiers(model)
+
             logger.debug("Registering model %s", model.__class__.__name__)
             self._models.add(model)
 
@@ -354,6 +359,7 @@ class Pyneo4jClient(ABC):
                     and x is not NodeModel
                     and x is not RelationshipModel,
                 ):
+                    self.__ensure_unique_model_identifiers(member[1])
                     self._models.add(member[1])
 
         current_count = len(self._models) - original_count
@@ -368,7 +374,7 @@ class Pyneo4jClient(ABC):
         the context, both client queries and model methods can be called.
         """
         try:
-            self._using_batches = True
+            self._using_batching = True
             logger.info("Starting batch transaction")
             await self.__begin_transaction()
 
@@ -381,7 +387,7 @@ class Pyneo4jClient(ABC):
             await self.__rollback_transaction()
             raise exc
         finally:
-            self._using_batches = False
+            self._using_batching = False
 
     @ensure_initialized
     async def drop_nodes(self) -> Self:
@@ -481,7 +487,7 @@ class Pyneo4jClient(ABC):
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
                 variables.
         """
-        if not self._using_batches:
+        if not self._using_batching:
             # If we are currently using batching, we should already be inside a active session/transaction
             await self.__begin_transaction()
 
@@ -507,7 +513,7 @@ class Pyneo4jClient(ABC):
             summary = await query_result.consume()
             logger.info("Query finished after %dms", summary.result_available_after or query_duration)
 
-            if not self._using_batches:
+            if not self._using_batching:
                 # Again, don't commit anything to the database when batching is enabled
                 await self.__commit_transaction()
 
@@ -515,7 +521,7 @@ class Pyneo4jClient(ABC):
         except Exception as exc:
             logger.error("Query exception: %s", exc)
 
-            if not self._using_batches:
+            if not self._using_batching:
                 # Same as in the beginning, we don't want to roll back anything if we use batching
                 await self.__rollback_transaction()
 
@@ -584,3 +590,23 @@ class Pyneo4jClient(ABC):
         except Exception as exc:
             logger.error("Query exception: %s", exc)
             raise exc
+
+    def __ensure_unique_model_identifiers(self, model: Union[Type[NodeModel], Type[RelationshipModel]]) -> None:
+        """
+        Ensures that no models with duplicate labels or type are registered.
+
+        Args:
+            model (Union[Type[NodeModel], Type[RelationshipModel]]): The model to check.
+
+        Raises:
+            DuplicateModelError: If a model with the same labels/type has already been registered.
+        """
+
+        labels_or_type = model._ogm_config.labels if issubclass(model, NodeModel) else model._ogm_config.type
+        combined = labels_or_type if not isinstance(labels_or_type, list) else "__".join(labels_or_type)
+        identifier = hashlib.sha256(combined.encode()).hexdigest()
+
+        if identifier in self._registered_hashes:
+            raise DuplicateModelError(model.__class__.__name__, self._registered_hashes[identifier].__class__.__name__)
+
+        self._registered_hashes[identifier] = model

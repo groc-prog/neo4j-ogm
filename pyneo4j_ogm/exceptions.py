@@ -88,3 +88,15 @@ class DeflationError(Pyneo4jError):
             f"The model {model} could not be deflated into a storable format. This usually means that you are trying to store a data type which is not supported by the driver.",
             *args,
         )
+
+
+class DuplicateModelError(Pyneo4jError):
+    """
+    Two models use the same labels or type.
+    """
+
+    def __init__(self, modelOne: str, modelTwo: str, *args):
+        super().__init__(
+            f"The models {modelOne} and {modelTwo} share the same labels or type. For a client to be able to resolve models correctly, each model must have a unique set of labels or type.",
+            *args,
+        )
