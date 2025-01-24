@@ -42,7 +42,3 @@ class NodeModel(ModelBase):
                     cast(List[str], cls.ogm_config["labels"]).append(label)
 
         cls._ogm_config = ValidatedNodeConfiguration.model_validate(cls.ogm_config)
-
-    @classmethod
-    def pyneo4j_config(cls) -> ValidatedNodeConfiguration:
-        return cls._ogm_config

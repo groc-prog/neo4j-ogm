@@ -1,5 +1,4 @@
 import json
-from abc import abstractmethod
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Self, Set, Union, cast
 
@@ -19,13 +18,10 @@ class ModelBase(BaseModel):
     of model properties.
     """
 
-    id: Optional[int] = Field(None)
-    element_id: Optional[str] = Field(None)
+    id: Optional[int] = Field(None, frozen=True)
+    element_id: Optional[str] = Field(None, frozen=True)
 
     _registry: Registry = PrivateAttr()
-
-    # TODO: serialize common data types (like sets) to something storable by default using a model
-    # serializer or a similar approach
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -42,17 +38,6 @@ class ModelBase(BaseModel):
 
         merged_config = cls.__merge_config(parent_config.model_dump(), model_config.model_dump())
         setattr(cls, "ogm_config", ModelConfigurationValidator(**merged_config).model_dump())
-
-    @classmethod
-    @abstractmethod
-    def pyneo4j_config(cls):
-        """
-        Returns the validated OGM model configuration.
-
-        Returns:
-            The validated configuration for either the node or relationship model.
-        """
-        pass  # pragma: no cover
 
     @classmethod
     def _inflate(cls, graph_entity: Union[Node, Relationship]) -> Self:

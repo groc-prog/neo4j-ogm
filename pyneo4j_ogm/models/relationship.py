@@ -33,7 +33,3 @@ class RelationshipModel(ModelBase):
             cls.ogm_config["type"] = cls.__name__.upper()
 
         cls._ogm_config = ValidatedRelationshipConfiguration.model_validate(cls.ogm_config)
-
-    @classmethod
-    def pyneo4j_config(cls) -> ValidatedRelationshipConfiguration:
-        return cls._ogm_config

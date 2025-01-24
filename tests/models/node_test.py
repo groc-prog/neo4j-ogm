@@ -1,7 +1,6 @@
 # pylint: disable=missing-class-docstring
 
 from pyneo4j_ogm.models.node import NodeModel
-from pyneo4j_ogm.options.model_options import ValidatedNodeConfiguration
 from pyneo4j_ogm.types.graph import EagerFetchStrategy
 
 
@@ -131,46 +130,3 @@ class TestConfiguration:
         assert Person._ogm_config.skip_index_creation is True  # type: ignore
         assert Person._ogm_config.eager_fetch is True  # type: ignore
         assert Person._ogm_config.eager_fetch_strategy == EagerFetchStrategy.AS_SPLIT_QUERY  # type: ignore
-
-
-class TestValidatedConfiguration:
-    def test_default_node_config(self):
-        class Developer(NodeModel):
-            pass
-
-        configuration = Developer.pyneo4j_config()
-
-        assert isinstance(configuration, ValidatedNodeConfiguration)
-        assert configuration.pre_hooks == {}
-        assert configuration.post_hooks == {}
-        assert not configuration.skip_constraint_creation
-        assert not configuration.skip_index_creation
-        assert not configuration.eager_fetch
-        assert configuration.eager_fetch_strategy == EagerFetchStrategy.COMBINED
-        assert configuration.labels == ["Developer"]
-
-    def test_custom_node_config(self):
-        def hook():
-            pass
-
-        class Developer(NodeModel):
-            ogm_config = {
-                "labels": ["Human", "Genius"],
-                "pre_hooks": {"create": hook},
-                "post_hooks": {"create": [hook]},
-                "skip_constraint_creation": True,
-                "skip_index_creation": True,
-                "eager_fetch": True,
-                "eager_fetch_strategy": EagerFetchStrategy.AS_SPLIT_QUERY,
-            }
-
-        configuration = Developer.pyneo4j_config()
-
-        assert isinstance(configuration, ValidatedNodeConfiguration)
-        assert configuration.pre_hooks == {"create": [hook]}
-        assert configuration.post_hooks == {"create": [hook]}
-        assert configuration.skip_constraint_creation
-        assert configuration.skip_index_creation
-        assert configuration.eager_fetch
-        assert configuration.eager_fetch_strategy == EagerFetchStrategy.AS_SPLIT_QUERY
-        assert configuration.labels == ["Human", "Genius"]
