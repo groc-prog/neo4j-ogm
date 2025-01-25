@@ -6,9 +6,19 @@ import neo4j
 import neo4j.graph
 import pytest
 from neo4j.exceptions import ClientError
+from typing_extensions import Annotated
 
 from pyneo4j_ogm.clients.memgraph import MemgraphClient
 from pyneo4j_ogm.exceptions import ClientNotInitializedError
+from pyneo4j_ogm.models.node import NodeModel
+from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.options.field_options import (
+    DataTypeConstraint,
+    ExistenceConstraint,
+    PointIndex,
+    PropertyIndex,
+    UniquenessConstraint,
+)
 from pyneo4j_ogm.types.graph import EntityType
 from pyneo4j_ogm.types.memgraph import MemgraphDataType
 from tests.fixtures.db import (
@@ -780,3 +790,1061 @@ class TestMemgraphQueries:
         assert len(result[0][0].labels) == 1
         assert list(result[0][0].labels)[0] == "Person"
         assert dict(result[0][0])["age"] == 24
+
+
+class TestMemgraphModelInitialization:
+    async def test_skips_initialization_if_all_client_skips_defined(self, memgraph_session):
+        class Person(NodeModel):
+            uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
+
+        class Likes(RelationshipModel):
+            uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
+
+        client = await MemgraphClient().connect(
+            ConnectionString.MEMGRAPH.value,
+            auth=Authentication.MEMGRAPH.value,
+            skip_constraints=True,
+            skip_indexes=True,
+        )
+        await client.register_models(Person, Likes)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+        await query.consume()
+
+        assert len(constraints) == 0
+
+        query = await memgraph_session.run("SHOW INDEX INFO")
+        indexes = await query.values()
+        await query.consume()
+
+        assert len(indexes) == 0
+
+    async def test_skips_initialization_if_all_model_skips_defined(self, memgraph_session):
+        class Person(NodeModel):
+            uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
+
+            ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
+
+        class Likes(RelationshipModel):
+            uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
+
+            ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
+
+        client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+        await client.register_models(Person, Likes)
+
+        query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+        constraints = await query.values()
+        await query.consume()
+
+        assert len(constraints) == 0
+
+        query = await memgraph_session.run("SHOW INDEX INFO")
+        indexes = await query.values()
+        await query.consume()
+
+        assert len(indexes) == 0
+
+    class TestMemgraphUniquenessConstraint:
+        async def test_model_registration_with_client_skipped_constraints(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, UniquenessConstraint()]
+
+            client = await MemgraphClient().connect(
+                ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_constraints=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_model_skipped_constraints(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint()]
+
+                ogm_config = {"skip_constraint_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, UniquenessConstraint()]
+
+                ogm_config = {"skip_constraint_creation": True}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_uniqueness_constraint(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, UniquenessConstraint()]
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][1] == "Person":
+                assert constraints[0][0] == "unique"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == ["uid"]
+
+                assert constraints[1][0] == "unique"
+                assert constraints[1][1] == "LIKES"
+                assert constraints[1][2] == ["uid"]
+            else:
+                assert constraints[0][0] == "unique"
+                assert constraints[0][1] == "LIKES"
+                assert constraints[0][2] == ["uid"]
+
+                assert constraints[1][0] == "unique"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == ["uid"]
+
+        async def test_model_registration_with_uniqueness_constraint_multi_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "unique"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == ["uid"]
+
+        async def test_model_registration_with_uniqueness_constraint_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint(specified_label="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "unique"
+            assert constraints[0][1] == "Human"
+            assert constraints[0][2] == ["uid"]
+
+        async def test_model_registration_with_uniqueness_constraint_invalid_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint(specified_label="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_multiple_uniqueness_constraint(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint()]
+                age: Annotated[int, UniquenessConstraint()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][2] == ["uid"]:
+                assert constraints[0][0] == "unique"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == ["uid"]
+
+                assert constraints[1][0] == "unique"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == ["age"]
+            else:
+                assert constraints[0][0] == "unique"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == ["age"]
+
+                assert constraints[1][0] == "unique"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == ["uid"]
+
+        async def test_model_registration_with_multiple_uniqueness_constraint_specified_labels(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint(specified_label="Human")]
+                age: Annotated[int, UniquenessConstraint(specified_label="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][1] == "Human":
+                assert constraints[0][0] == "unique"
+                assert constraints[0][1] == "Human"
+                assert constraints[0][2] == ["uid"]
+
+                assert constraints[1][0] == "unique"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == ["age"]
+            else:
+                assert constraints[0][0] == "unique"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == ["age"]
+
+                assert constraints[1][0] == "unique"
+                assert constraints[1][1] == "Human"
+                assert constraints[1][2] == ["uid"]
+
+        async def test_model_registration_with_multiple_uniqueness_constraint_invalid_composite_key(
+            self, memgraph_session
+        ):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint(specified_label="Human", composite_key="key")]
+                age: Annotated[int, UniquenessConstraint(specified_label="Person", composite_key="key")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_multiple_uniqueness_constraint_composite_key(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, UniquenessConstraint(composite_key="key")]
+                age: Annotated[int, UniquenessConstraint(composite_key="key")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert constraints[0][0] == "unique"
+            assert constraints[0][1] == "Person"
+            assert len(constraints[0][2]) == 2
+            assert "age" in constraints[0][2]
+            assert "uid" in constraints[0][2]
+
+    class TestMemgraphExistenceConstraint:
+        async def test_model_registration_with_client_skipped_constraints(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, ExistenceConstraint()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, ExistenceConstraint()]
+
+            client = await MemgraphClient().connect(
+                ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_constraints=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_model_skipped_constraints(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, ExistenceConstraint()]
+
+                ogm_config = {"skip_constraint_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, ExistenceConstraint()]
+
+                ogm_config = {"skip_constraint_creation": True}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_existence_constraint(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, ExistenceConstraint()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, ExistenceConstraint()]
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][1] == "Person":
+                assert constraints[0][0] == "exists"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == "uid"
+
+                assert constraints[1][0] == "exists"
+                assert constraints[1][1] == "LIKES"
+                assert constraints[1][2] == "uid"
+            else:
+                assert constraints[0][0] == "exists"
+                assert constraints[0][1] == "LIKES"
+                assert constraints[0][2] == "uid"
+
+                assert constraints[1][0] == "exists"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == "uid"
+
+        async def test_model_registration_with_existence_constraint_multi_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, ExistenceConstraint()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "exists"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "uid"
+
+        async def test_model_registration_with_existence_constraint_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, ExistenceConstraint(specified_label="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "exists"
+            assert constraints[0][1] == "Human"
+            assert constraints[0][2] == "uid"
+
+        async def test_model_registration_with_existence_constraint_invalid_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, ExistenceConstraint(specified_label="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_multiple_existence_constraint(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, ExistenceConstraint()]
+                age: Annotated[int, ExistenceConstraint()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][2] == "uid":
+                assert constraints[0][0] == "exists"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == "uid"
+
+                assert constraints[1][0] == "exists"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == "age"
+            else:
+                assert constraints[0][0] == "exists"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == "age"
+
+                assert constraints[1][0] == "exists"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == "uid"
+
+        async def test_model_registration_with_multiple_existence_constraint_specified_labels(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, ExistenceConstraint(specified_label="Human")]
+                age: Annotated[int, ExistenceConstraint(specified_label="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][1] == "Human":
+                assert constraints[0][0] == "exists"
+                assert constraints[0][1] == "Human"
+                assert constraints[0][2] == "uid"
+
+                assert constraints[1][0] == "exists"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == "age"
+            else:
+                assert constraints[0][0] == "exists"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == "age"
+
+                assert constraints[1][0] == "exists"
+                assert constraints[1][1] == "Human"
+                assert constraints[1][2] == "uid"
+
+    class TestMemgraphDataTypeConstraint:
+        async def test_model_registration_with_client_skipped_constraints(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
+
+            client = await MemgraphClient().connect(
+                ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_constraints=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_model_skipped_constraints(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
+
+                ogm_config = {"skip_constraint_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
+
+                ogm_config = {"skip_constraint_creation": True}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_data_type_constraint(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][1] == "Person":
+                assert constraints[0][0] == "data_type"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == "uid"
+                assert constraints[0][3] == "STRING"
+
+                assert constraints[1][0] == "data_type"
+                assert constraints[1][1] == "LIKES"
+                assert constraints[1][2] == "uid"
+                assert constraints[1][3] == "STRING"
+            else:
+                assert constraints[0][0] == "data_type"
+                assert constraints[0][1] == "LIKES"
+                assert constraints[0][2] == "uid"
+                assert constraints[0][3] == "STRING"
+
+                assert constraints[1][0] == "data_type"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == "uid"
+                assert constraints[1][3] == "STRING"
+
+        async def test_model_registration_with_data_type_constraint_multi_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Person"
+            assert constraints[0][2] == "uid"
+            assert constraints[0][3] == "STRING"
+
+        async def test_model_registration_with_data_type_constraint_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING, specified_label="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 1
+            assert constraints[0][0] == "data_type"
+            assert constraints[0][1] == "Human"
+            assert constraints[0][2] == "uid"
+            assert constraints[0][3] == "STRING"
+
+        async def test_model_registration_with_data_type_constraint_invalid_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING, specified_label="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 0
+
+        async def test_model_registration_with_multiple_data_type_constraint(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
+                age: Annotated[int, DataTypeConstraint(data_type=MemgraphDataType.INTEGER)]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][2] == "uid":
+                assert constraints[0][0] == "data_type"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == "uid"
+                assert constraints[0][3] == "STRING"
+
+                assert constraints[1][0] == "data_type"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == "age"
+                assert constraints[1][3] == "INTEGER"
+            else:
+                assert constraints[0][0] == "data_type"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == "age"
+                assert constraints[0][3] == "INTEGER"
+
+                assert constraints[1][0] == "data_type"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == "uid"
+                assert constraints[1][3] == "STRING"
+
+        async def test_model_registration_with_multiple_data_type_constraint_specified_labels(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING, specified_label="Human")]
+                age: Annotated[int, DataTypeConstraint(data_type=MemgraphDataType.INTEGER, specified_label="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW CONSTRAINT INFO")
+            constraints = await query.values()
+            await query.consume()
+
+            assert len(constraints) == 2
+
+            if constraints[0][1] == "Human":
+                assert constraints[0][0] == "data_type"
+                assert constraints[0][1] == "Human"
+                assert constraints[0][2] == "uid"
+                assert constraints[0][3] == "STRING"
+
+                assert constraints[1][0] == "data_type"
+                assert constraints[1][1] == "Person"
+                assert constraints[1][2] == "age"
+                assert constraints[1][3] == "INTEGER"
+            else:
+                assert constraints[0][0] == "data_type"
+                assert constraints[0][1] == "Person"
+                assert constraints[0][2] == "age"
+                assert constraints[0][3] == "INTEGER"
+
+                assert constraints[1][0] == "data_type"
+                assert constraints[1][1] == "Human"
+                assert constraints[1][2] == "uid"
+                assert constraints[1][3] == "STRING"
+
+    class TestMemgraphPropertyIndex:
+        async def test_model_registration_with_client_skipped_indexes(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PropertyIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PropertyIndex()]
+
+            client = await MemgraphClient().connect(
+                ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_indexes=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_model_skipped_indexes(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PropertyIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PropertyIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_property_index(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PropertyIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PropertyIndex()]
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+
+            if indexes[0][1] == "Person":
+                assert indexes[0][0] == "label+property"
+                assert indexes[0][1] == "Person"
+                assert indexes[0][2] == "uid"
+
+                assert indexes[1][0] == "edge-type+property"
+                assert indexes[1][1] == "LIKES"
+                assert indexes[1][2] == "uid"
+            else:
+                assert indexes[0][0] == "edge-type+property"
+                assert indexes[0][1] == "LIKES"
+                assert indexes[0][2] == "uid"
+
+                assert indexes[1][0] == "label+property"
+                assert indexes[1][1] == "Person"
+                assert indexes[1][2] == "uid"
+
+        async def test_model_registration_with_property_index_multi_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PropertyIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][0] == "label+property"
+            assert indexes[0][1] == "Person"
+            assert indexes[0][2] == "uid"
+
+        async def test_model_registration_with_property_index_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PropertyIndex(specified_label="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][0] == "label+property"
+            assert indexes[0][1] == "Human"
+            assert indexes[0][2] == "uid"
+
+        async def test_model_registration_with_property_index_invalid_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PropertyIndex(specified_label="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_multiple_property_index(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PropertyIndex()]
+                age: Annotated[int, PropertyIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+
+            if indexes[0][2] == "uid":
+                assert indexes[0][0] == "label+property"
+                assert indexes[0][1] == "Person"
+                assert indexes[0][2] == "uid"
+
+                assert indexes[1][0] == "label+property"
+                assert indexes[1][1] == "Person"
+                assert indexes[1][2] == "age"
+            else:
+                assert indexes[0][0] == "label+property"
+                assert indexes[0][1] == "Person"
+                assert indexes[0][2] == "age"
+
+                assert indexes[1][0] == "label+property"
+                assert indexes[1][1] == "Person"
+                assert indexes[1][2] == "uid"
+
+        async def test_model_registration_with_multiple_property_index_specified_labels(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PropertyIndex(specified_label="Human")]
+                age: Annotated[int, PropertyIndex(specified_label="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+
+            if indexes[0][1] == "Human":
+                assert indexes[0][0] == "label+property"
+                assert indexes[0][1] == "Human"
+                assert indexes[0][2] == "uid"
+
+                assert indexes[1][0] == "label+property"
+                assert indexes[1][1] == "Person"
+                assert indexes[1][2] == "age"
+            else:
+                assert indexes[0][0] == "label+property"
+                assert indexes[0][1] == "Person"
+                assert indexes[0][2] == "age"
+
+                assert indexes[1][0] == "label+property"
+                assert indexes[1][1] == "Human"
+                assert indexes[1][2] == "uid"
+
+    class TestMemgraphPointIndex:
+        async def test_model_registration_with_client_skipped_indexes(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PointIndex()]
+
+            client = await MemgraphClient().connect(
+                ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_indexes=True
+            )
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_model_skipped_indexes(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PointIndex()]
+
+                ogm_config = {"skip_index_creation": True}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_point_index(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+
+            class Likes(RelationshipModel):
+                uid: Annotated[str, PointIndex()]
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person, Likes)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+
+            if indexes[0][1] == "Person":
+                assert indexes[0][0] == "point"
+                assert indexes[0][1] == "Person"
+                assert indexes[0][2] == "uid"
+
+                assert indexes[1][0] == "point"
+                assert indexes[1][1] == "LIKES"
+                assert indexes[1][2] == "uid"
+            else:
+                assert indexes[0][0] == "point"
+                assert indexes[0][1] == "LIKES"
+                assert indexes[0][2] == "uid"
+
+                assert indexes[1][0] == "point"
+                assert indexes[1][1] == "Person"
+                assert indexes[1][2] == "uid"
+
+        async def test_model_registration_with_point_index_multi_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][0] == "point"
+            assert indexes[0][1] == "Person"
+            assert indexes[0][2] == "uid"
+
+        async def test_model_registration_with_point_index_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex(specified_label="Human")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 1
+            assert indexes[0][0] == "point"
+            assert indexes[0][1] == "Human"
+            assert indexes[0][2] == "uid"
+
+        async def test_model_registration_with_point_index_invalid_specified_label(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex(specified_label="Foo")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            with pytest.raises(ValueError):
+                await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 0
+
+        async def test_model_registration_with_multiple_point_index(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex()]
+                age: Annotated[int, PointIndex()]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+
+            if indexes[0][2] == "uid":
+                assert indexes[0][0] == "point"
+                assert indexes[0][1] == "Person"
+                assert indexes[0][2] == "uid"
+
+                assert indexes[1][0] == "point"
+                assert indexes[1][1] == "Person"
+                assert indexes[1][2] == "age"
+            else:
+                assert indexes[0][0] == "point"
+                assert indexes[0][1] == "Person"
+                assert indexes[0][2] == "age"
+
+                assert indexes[1][0] == "point"
+                assert indexes[1][1] == "Person"
+                assert indexes[1][2] == "uid"
+
+        async def test_model_registration_with_multiple_point_index_specified_labels(self, memgraph_session):
+            class Person(NodeModel):
+                uid: Annotated[str, PointIndex(specified_label="Human")]
+                age: Annotated[int, PointIndex(specified_label="Person")]
+
+                ogm_config = {"labels": ["Person", "Human"]}
+
+            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            await client.register_models(Person)
+
+            query = await memgraph_session.run("SHOW INDEX INFO")
+            indexes = await query.values()
+            await query.consume()
+
+            assert len(indexes) == 2
+
+            if indexes[0][1] == "Human":
+                assert indexes[0][0] == "point"
+                assert indexes[0][1] == "Human"
+                assert indexes[0][2] == "uid"
+
+                assert indexes[1][0] == "point"
+                assert indexes[1][1] == "Person"
+                assert indexes[1][2] == "age"
+            else:
+                assert indexes[0][0] == "point"
+                assert indexes[0][1] == "Person"
+                assert indexes[0][2] == "age"
+
+                assert indexes[1][0] == "point"
+                assert indexes[1][1] == "Human"
+                assert indexes[1][2] == "uid"

@@ -26,7 +26,7 @@ class Authentication(Enum):
     MEMGRAPH = ("memgraph", "password")
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 async def neo4j_client():
     """
     Provides a client for a Neo4j database started using docker-compose.yml.
@@ -40,7 +40,7 @@ async def neo4j_client():
     await client.close()
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 async def memgraph_client():
     """
     Provides a client for a Memgraph database started using docker-compose.yml.
@@ -54,7 +54,7 @@ async def memgraph_client():
     await client.close()
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 async def neo4j_session():
     """
     Provides a session for a Neo4j database started using docker-compose.yml. The database is cleared
@@ -92,7 +92,7 @@ async def neo4j_session():
     await driver.close()
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 async def memgraph_session():
     """
     Provides a session for a Memgraph database started using docker-compose.yml. The database is cleared
