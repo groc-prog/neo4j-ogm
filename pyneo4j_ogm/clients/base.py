@@ -128,6 +128,7 @@ class Pyneo4jClient(ABC):
         self._session = None
         self._transaction = None
         self._models = set()
+        self._registered_hashes = {}
         self._skip_constraint_creation = False
         self._skip_index_creation = False
         self._using_batching = False

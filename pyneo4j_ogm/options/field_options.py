@@ -50,7 +50,7 @@ class PropertyIndex:
     Memgraph specific constraint. Used to define a property index for a given property.
 
     For multi-label nodes, a specific label can be defined with the `specified_label` property.
-    By default, the first available label from the model will be used. Can only be used with nodes.
+    By default, the first available label from the model will be used. `specified_label` can only be used with nodes.
     """
 
     specified_label: Optional[str] = None

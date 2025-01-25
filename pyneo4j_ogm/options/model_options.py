@@ -54,7 +54,7 @@ class ModelConfigurationValidator(BaseModel):
 
     @field_validator("pre_hooks", "post_hooks", mode="before")
     @classmethod
-    def normalize_hooks_pydantic_v2(cls, value: Any):
+    def normalize_hooks(cls, value: Any):
         if not isinstance(value, dict):
             raise ValueError("Hooks must be a dictionary")
 
@@ -69,7 +69,7 @@ class ModelConfigurationValidator(BaseModel):
 
     @field_validator("labels", mode="before")
     @classmethod
-    def normalize_labels_pydantic_v2(cls, value: Any):
+    def normalize_labels(cls, value: Any):
         if not isinstance(value, (str, list, set)):
             raise ValueError("Labels must be string|list|set")
 
@@ -110,5 +110,5 @@ class ValidatedRelationshipConfiguration(BaseModel):
 
     @field_validator("type")
     @classmethod
-    def normalize_type_pydantic_v2(cls, value: Any):
+    def normalize_type(cls, value: Any):
         return value.upper()
