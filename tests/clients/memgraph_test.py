@@ -201,6 +201,14 @@ class TestMemgraphConstraints:
             assert set(constraints[0][2]) == set(["id", "age"])
 
     class TestMemgraphDataTypeConstraint:
+        async def test_throws_non_constraint_errors(self, memgraph_client):
+            def patched_cypher_fn(*args, **kwargs):
+                raise Exception()  # pylint: disable=broad-exception-raised
+
+            with patch.object(memgraph_client, "cypher", patched_cypher_fn):
+                with pytest.raises(Exception):
+                    await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
+
         async def test_data_type_constraint_is_chainable(self, memgraph_session, memgraph_client):
             await check_no_constraints(memgraph_session)
             return_value = await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
