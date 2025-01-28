@@ -1,6 +1,7 @@
+import hashlib
 import json
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Self, Set, Union, cast
+from typing import Any, ClassVar, Dict, List, Optional, Self, Set, Union, cast
 
 from neo4j.graph import Node, Relationship
 from pydantic import BaseModel, Field, PrivateAttr
@@ -8,7 +9,11 @@ from pydantic import BaseModel, Field, PrivateAttr
 from pyneo4j_ogm.data_types import ALLOWED_NEO4J_LIST_TYPES, ALLOWED_TYPES
 from pyneo4j_ogm.exceptions import DeflationError, InflationError
 from pyneo4j_ogm.logger import logger
-from pyneo4j_ogm.options.model_options import ModelConfigurationValidator
+from pyneo4j_ogm.options.model_options import (
+    ModelConfigurationValidator,
+    ValidatedNodeConfiguration,
+    ValidatedRelationshipConfiguration,
+)
 from pyneo4j_ogm.registry import Registry
 
 
@@ -22,6 +27,7 @@ class ModelBase(BaseModel):
     element_id: Optional[str] = Field(None, frozen=True)
 
     _registry: Registry = PrivateAttr()
+    _ogm_config: ClassVar[Union[ValidatedNodeConfiguration, ValidatedRelationshipConfiguration]]
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -38,6 +44,21 @@ class ModelBase(BaseModel):
 
         merged_config = cls.__merge_config(parent_config.model_dump(), model_config.model_dump())
         setattr(cls, "ogm_config", ModelConfigurationValidator(**merged_config).model_dump())
+
+    @classmethod
+    def _identifier_hash(cls) -> str:
+        """
+        Returns a hash identifier for the given model. This hash i created from the models type or labels and
+        will be the same for models with the same type/label.
+
+        Returns:
+            str: The generated hash.
+        """
+        labels_or_type = (
+            cls._ogm_config.labels if isinstance(cls._ogm_config, ValidatedNodeConfiguration) else cls._ogm_config.type
+        )
+        combined = labels_or_type if not isinstance(labels_or_type, list) else "__".join(labels_or_type)
+        return hashlib.sha256(combined.encode()).hexdigest()
 
     @classmethod
     def _inflate(cls, graph_entity: Union[Node, Relationship]) -> Self:
@@ -90,32 +111,37 @@ class ModelBase(BaseModel):
 
         return cls.model_validate(inflatable)
 
-    def _deflate(self) -> Dict[str, Any]:
+    @classmethod
+    def _deflate(cls, dict_model: Dict[str, Any]) -> Dict[str, Any]:
         """
         Deflates the current model instance into a dictionary which can be stored by the Neo4j driver.
+
+        Args:
+            dict_model (Dict[str, Any]): The model to deflate as a dictionary.
 
         Returns:
             Dict[str, Any]: The storable dictionary.
         """
         from pyneo4j_ogm.clients.neo4j import Neo4jClient
 
-        client = self._registry.active_client
+        client = cls._registry.active_client
         is_neo4j_client = isinstance(client, Neo4jClient)
         stringify_nested_properties = (
             False if not is_neo4j_client else getattr(client, "_allow_nested_properties", True)
         )
 
-        logger.debug("Deflating model %s into storable format", self.__class__.__name__)
-        deflated = self.model_dump(exclude={"id", "element_id"})
+        logger.debug("Deflating model %s into storable format", cls.__class__.__name__)
+        deflated = deepcopy(dict_model)
 
         for key, value in deflated.items():
             logger.debug("Validating property %s for model %s")
-            deflated[key] = self.__ensure_storable_value(value, is_neo4j_client, stringify_nested_properties)
+            deflated[key] = cls.__ensure_storable_value(value, is_neo4j_client, stringify_nested_properties)
 
         return deflated
 
+    @classmethod
     def __ensure_storable_value(
-        self, value: Any, is_neo4j_client: bool, stringify_nested_properties: bool, depth: int = 0
+        cls, value: Any, is_neo4j_client: bool, stringify_nested_properties: bool, depth: int = 0
     ) -> Any:
         """
         Validates that a given value is storable. Will parse and validate the value based on whether the client
@@ -137,7 +163,7 @@ class ModelBase(BaseModel):
         Returns:
             Any: The parsed and validated value.
         """
-        storable = self.__to_storable_value(value)
+        storable = cls.__to_storable_value(value)
 
         if isinstance(storable, dict):
             for key, maybe_storable in storable.items():
@@ -150,15 +176,15 @@ class ModelBase(BaseModel):
                             continue
                         except Exception as exc:
                             logger.error("Failed to stringify nested property %s: %s", key, exc)
-                            raise DeflationError(self.__class__.__name__) from exc
+                            raise DeflationError(cls.__class__.__name__) from exc
                     else:
                         logger.error(
                             "Encountered nested property %s, but `allow_nested_properties` is set to False", key
                         )
-                        raise DeflationError(self.__class__.__name__)
+                        raise DeflationError(cls.__class__.__name__)
 
                 # Recursively go through all nested properties
-                storable[key] = self.__ensure_storable_value(
+                storable[key] = cls.__ensure_storable_value(
                     maybe_storable, is_neo4j_client, stringify_nested_properties, depth + 1
                 )
         elif isinstance(storable, (list, tuple)):
@@ -174,7 +200,7 @@ class ModelBase(BaseModel):
             for index, maybe_storable in enumerate(storable):
                 # We need to convert it to a storable item here since we need to check for a homogeneous collection
                 # when dealing with a Neo4j client
-                storable_item = self.__to_storable_value(maybe_storable)
+                storable_item = cls.__to_storable_value(maybe_storable)
 
                 # Same as with handling dictionaries, we fall back to serializing the value to a string if Neo4j does not
                 # support it as a collection item
@@ -184,21 +210,21 @@ class ModelBase(BaseModel):
                             storable_item = json.dumps(storable_item)
                         except Exception as exc:
                             logger.error("Failed to stringify nested property %s: %s", key, exc)
-                            raise DeflationError(self.__class__.__name__) from exc
+                            raise DeflationError(cls.__class__.__name__) from exc
                     else:
                         logger.error(
                             "Encountered unsupported collection property %s, but `allow_nested_properties` is set to False",
                             key,
                         )
-                        raise DeflationError(self.__class__.__name__)
+                        raise DeflationError(cls.__class__.__name__)
 
                 # Check whether the collection is homogeneous
                 if is_neo4j_client and type_ is not None and type_ is not type(storable_item):
                     logger.error("Found non-homogeneous collection property %s while using Neo4j client", key)
-                    raise DeflationError(self.__class__.__name__)
+                    raise DeflationError(cls.__class__.__name__)
 
                 type_ = type(storable_item)
-                cast(List, storable)[index] = self.__ensure_storable_value(
+                cast(List, storable)[index] = cls.__ensure_storable_value(
                     storable_item, is_neo4j_client, stringify_nested_properties, depth + 1
                 )
 
@@ -207,7 +233,8 @@ class ModelBase(BaseModel):
 
         return storable
 
-    def __to_storable_value(self, value: Any) -> Any:
+    @classmethod
+    def __to_storable_value(cls, value: Any) -> Any:
         """
         Attempts to parse the given value into a comparable, storable type if not already
         storable.
@@ -229,7 +256,7 @@ class ModelBase(BaseModel):
             return list(value)
 
         logger.error("Non storable type %s could not be parsed", type(value))
-        raise DeflationError(self.__class__.__name__)
+        raise DeflationError(cls.__class__.__name__)
 
     @classmethod
     def __merge_config(cls, current_config: Dict[str, Any], updated_config: Dict[str, Any]) -> Dict[str, Any]:

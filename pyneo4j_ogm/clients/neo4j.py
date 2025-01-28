@@ -389,14 +389,17 @@ class Neo4jClient(Pyneo4jClient):
 
     @ensure_initialized
     async def _initialize_models(self) -> None:
-        for model in self._models:
+        registered_hashes = set(self._registered_models.keys())
 
+        for model_hash in registered_hashes.difference(self._initialized_model_hashes):
+            model = self._registered_models[model_hash]
             entity_type = EntityType.NODE if issubclass(model, NodeModel) else EntityType.RELATIONSHIP
 
             if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
                 self._skip_constraint_creation and self._skip_index_creation
             ):
                 logger.debug("Constraint and index creation disabled for model %s, skipping", model.__name__)
+                self._initialized_model_hashes.add(model_hash)
                 continue
 
             logger.debug("Initializing model %s", model.__name__)
@@ -454,6 +457,8 @@ class Neo4jClient(Pyneo4jClient):
                             mapped_option["labels_or_type"][0],
                             mapped_option["properties"][0],
                         )
+
+            self._initialized_model_hashes.add(model_hash)
 
     def __generate_options_mapping(
         self,

@@ -1,4 +1,3 @@
-import hashlib
 import importlib.util
 import inspect
 import os
@@ -112,8 +111,8 @@ class Pyneo4jClient(ABC):
     _driver: Optional[AsyncDriver]
     _session: Optional[AsyncSession]
     _transaction: Optional[AsyncTransaction]
-    _models: Set[Union[Type[NodeModel], Type[RelationshipModel]]]
-    _registered_hashes: Dict[str, Union[Type[NodeModel], Type[RelationshipModel]]]
+    _initialized_model_hashes: Set[str]
+    _registered_models: Dict[str, Union[Type[NodeModel], Type[RelationshipModel]]]
     _using_batching: bool
     _skip_constraint_creation: bool
     _skip_index_creation: bool
@@ -127,8 +126,8 @@ class Pyneo4jClient(ABC):
         self._driver = None
         self._session = None
         self._transaction = None
-        self._models = set()
-        self._registered_hashes = {}
+        self._initialized_model_hashes = set()
+        self._registered_models = {}
         self._skip_constraint_creation = False
         self._skip_index_creation = False
         self._using_batching = False
@@ -162,9 +161,8 @@ class Pyneo4jClient(ABC):
     @abstractmethod
     async def _initialize_models(self) -> None:
         """
-        Initializes all registered models by validating them and setting the defined indexes/constraints.
-        This method has to be implemented by each client because of differences in index/constraint
-        creation.
+        Initializes all registered models by setting the defined indexes/constraints. This method has to be
+        implemented by each client because of differences in index/constraint creation.
         """
         pass  # pragma: no cover
 
@@ -304,18 +302,22 @@ class Pyneo4jClient(ABC):
             Self: The client.
         """
         logger.debug("Registering models with client")
-        original_count = len(self._models)
+        original_count = len(self._registered_models)
 
         for model in args:
             if not issubclass(model, (NodeModel, RelationshipModel)):
                 continue
 
-            self.__ensure_unique_model_identifiers(model)
+            model_hash = model._identifier_hash()
+            if model_hash in self._registered_models:
+                raise DuplicateModelError(
+                    model.__class__.__name__, self._registered_models[model_hash].__class__.__name__
+                )
 
-            logger.debug("Registering model %s", model.__class__.__name__)
-            self._models.add(model)
+            logger.debug("Registering model %s", model_hash)
+            self._registered_models[model_hash] = model
 
-        current_count = len(self._models) - original_count
+        current_count = len(self._registered_models) - original_count
         logger.info("Registered %d models", current_count)
 
         return self
@@ -333,7 +335,7 @@ class Pyneo4jClient(ABC):
             Self: The client.
         """
         logger.debug("Registering models in directory %s", path)
-        original_count = len(self._models)
+        original_count = len(self._registered_models)
 
         for root, _, files in os.walk(path):
             logger.debug("Checking %d files for models", len(files))
@@ -353,17 +355,23 @@ class Pyneo4jClient(ABC):
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
 
-                for member in inspect.getmembers(
+                for _, cls in inspect.getmembers(
                     module,
                     lambda x: inspect.isclass(x)
                     and issubclass(x, (NodeModel, RelationshipModel))
                     and x is not NodeModel
                     and x is not RelationshipModel,
                 ):
-                    self.__ensure_unique_model_identifiers(member[1])
-                    self._models.add(member[1])
+                    model_hash = cast(Union[NodeModel, RelationshipModel], cls)._identifier_hash()
+                    if model_hash in self._registered_models:
+                        raise DuplicateModelError(
+                            cls.__class__.__name__, self._registered_models[model_hash].__class__.__name__
+                        )
 
-        current_count = len(self._models) - original_count
+                    logger.debug("Registering model %s", model_hash)
+                    self._registered_models[model_hash] = cls
+
+        current_count = len(self._registered_models) - original_count
         logger.info("Registered %d models", current_count)
 
         return self
@@ -591,23 +599,3 @@ class Pyneo4jClient(ABC):
         except Exception as exc:
             logger.error("Query exception: %s", exc)
             raise exc
-
-    def __ensure_unique_model_identifiers(self, model: Union[Type[NodeModel], Type[RelationshipModel]]) -> None:
-        """
-        Ensures that no models with duplicate labels or type are registered.
-
-        Args:
-            model (Union[Type[NodeModel], Type[RelationshipModel]]): The model to check.
-
-        Raises:
-            DuplicateModelError: If a model with the same labels/type has already been registered.
-        """
-
-        labels_or_type = model._ogm_config.labels if issubclass(model, NodeModel) else model._ogm_config.type
-        combined = labels_or_type if not isinstance(labels_or_type, list) else "__".join(labels_or_type)
-        identifier = hashlib.sha256(combined.encode()).hexdigest()
-
-        if identifier in self._registered_hashes:
-            raise DuplicateModelError(model.__class__.__name__, self._registered_hashes[identifier].__class__.__name__)
-
-        self._registered_hashes[identifier] = model
