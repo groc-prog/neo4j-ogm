@@ -1,6 +1,7 @@
 # pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument
 
-from unittest.mock import AsyncMock, patch
+from os import path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import neo4j
 import neo4j.graph
@@ -9,7 +10,7 @@ from neo4j.exceptions import ClientError
 from typing_extensions import Annotated
 
 from pyneo4j_ogm.clients.memgraph import MemgraphClient
-from pyneo4j_ogm.exceptions import ClientNotInitializedError
+from pyneo4j_ogm.exceptions import ClientNotInitializedError, DuplicateModelError
 from pyneo4j_ogm.models.node import NodeModel
 from pyneo4j_ogm.models.relationship import RelationshipModel
 from pyneo4j_ogm.options.field_options import (
@@ -27,6 +28,11 @@ from tests.fixtures.db import (
     memgraph_client,
     memgraph_session,
 )
+from tests.model_imports.valid.nested.nested import (
+    NestedNodeModel,
+    NestedRelationshipModel,
+)
+from tests.model_imports.valid.top import TopNodeModel, TopRelationshipModel
 
 
 async def setup_constraints(session: neo4j.AsyncSession):
@@ -1856,3 +1862,104 @@ class TestMemgraphModelInitialization:
                 assert indexes[1][0] == "point"
                 assert indexes[1][1] == "Human"
                 assert indexes[1][2] == "uid"
+
+
+class TestMemgraphModelRegistration:
+    class TestMemgraphRegisterModelClass:
+        async def test_registers_model_classes(self, memgraph_client):
+            class Human(NodeModel):
+                ogm_config = {"labels": {"Human"}}
+
+            class HasEmotion(RelationshipModel):
+                ogm_config = {"type": "HAS_EMOTION"}
+
+            await memgraph_client.register_models(Human, HasEmotion)
+
+            assert len(memgraph_client._registered_models) == 2
+            assert Human._identifier_hash() in memgraph_client._registered_models
+            assert HasEmotion._identifier_hash() in memgraph_client._registered_models
+            assert len(memgraph_client._initialized_model_hashes) == 2
+            assert Human._identifier_hash() in memgraph_client._initialized_model_hashes
+            assert HasEmotion._identifier_hash() in memgraph_client._initialized_model_hashes
+
+        async def test_raises_on_duplicate_node_model_registration(self, memgraph_client):
+            class HumanOne(NodeModel):
+                ogm_config = {"labels": {"Human"}}
+
+            class HumanTwo(NodeModel):
+                ogm_config = {"labels": {"Human"}}
+
+            with pytest.raises(DuplicateModelError):
+                await memgraph_client.register_models(HumanOne, HumanTwo)
+
+        async def test_raises_on_duplicate_multi_label_node_model_registration(self, memgraph_client):
+            class HumanOne(NodeModel):
+                ogm_config = {"labels": {"Human", "Special"}}
+
+            class HumanTwo(NodeModel):
+                ogm_config = {"labels": {"Human", "Special"}}
+
+            with pytest.raises(DuplicateModelError):
+                await memgraph_client.register_models(HumanOne, HumanTwo)
+
+        async def test_raises_on_duplicate_relationship_model_registration(self, memgraph_client):
+            class HasEmotionOne(RelationshipModel):
+                ogm_config = {"type": "HAS_EMOTION"}
+
+            class HasEmotionTwo(RelationshipModel):
+                ogm_config = {"type": "HAS_EMOTION"}
+
+            with pytest.raises(DuplicateModelError):
+                await memgraph_client.register_models(HasEmotionOne, HasEmotionTwo)
+
+    class TestMemgraphRegisterModelDirectory:
+        async def test_registers_models_from_dir(self, memgraph_client):
+            await memgraph_client.register_models_directory(
+                path.join(path.dirname(__file__), "..", "model_imports", "valid")
+            )
+
+            assert len(memgraph_client._registered_models) == 5
+            assert TopNodeModel._identifier_hash() in memgraph_client._registered_models
+            assert TopRelationshipModel._identifier_hash() in memgraph_client._registered_models
+            assert NestedNodeModel._identifier_hash() in memgraph_client._registered_models
+            assert NestedRelationshipModel._identifier_hash() in memgraph_client._registered_models
+
+            assert len(memgraph_client._initialized_model_hashes) == 5
+            assert TopNodeModel._identifier_hash() in memgraph_client._initialized_model_hashes
+            assert TopRelationshipModel._identifier_hash() in memgraph_client._initialized_model_hashes
+            assert NestedNodeModel._identifier_hash() in memgraph_client._initialized_model_hashes
+            assert NestedRelationshipModel._identifier_hash() in memgraph_client._initialized_model_hashes
+
+        async def test_ignores_non_python_files(self, memgraph_client):
+            await memgraph_client.register_models_directory(
+                path.join(path.dirname(__file__), "..", "model_imports", "invalid_file_type")
+            )
+
+            assert len(memgraph_client._registered_models) == 0
+            assert len(memgraph_client._initialized_model_hashes) == 0
+
+        async def test_raises_import_error_on_no_spec_returned(self, memgraph_client):
+            with patch("importlib.util.spec_from_file_location", return_value=None):
+                with pytest.raises(ImportError):
+                    await memgraph_client.register_models_directory(
+                        path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                    )
+
+        async def test_raises_import_error_on_no_spec_loader_returned(self, memgraph_client):
+            mock_spec = MagicMock()
+            mock_spec.loader = None
+
+            with patch("importlib.util.spec_from_file_location", return_value=mock_spec):
+                with pytest.raises(ImportError):
+                    await memgraph_client.register_models_directory(
+                        path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                    )
+
+        async def test_raises_on_duplicate_model_identifier(self, memgraph_client):
+            with pytest.raises(DuplicateModelError):
+                await memgraph_client.register_models_directory(
+                    path.join(path.dirname(__file__), "..", "model_imports", "invalid_duplicate_model")
+                )
+
+            assert len(memgraph_client._registered_models) == 1
+            assert len(memgraph_client._initialized_model_hashes) == 0

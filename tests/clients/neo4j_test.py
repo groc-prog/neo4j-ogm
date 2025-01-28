@@ -1,7 +1,8 @@
 # pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument
 
+from os import path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import neo4j
 import neo4j.graph
@@ -12,6 +13,7 @@ from typing_extensions import Annotated
 from pyneo4j_ogm.clients.neo4j import Neo4jClient, ensure_neo4j_version
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
+    DuplicateModelError,
     UnsupportedDatabaseVersionError,
 )
 from pyneo4j_ogm.models.node import NodeModel
@@ -32,6 +34,11 @@ from tests.fixtures.db import (
     neo4j_client,
     neo4j_session,
 )
+from tests.model_imports.valid.nested.nested import (
+    NestedNodeModel,
+    NestedRelationshipModel,
+)
+from tests.model_imports.valid.top import TopNodeModel, TopRelationshipModel
 
 
 async def setup_constraints(session: neo4j.AsyncSession):
@@ -1928,3 +1935,104 @@ class TestNeo4jModelInitialization:
             assert indexes[0][5] == EntityType.NODE.value
             assert indexes[0][6] == ["Person", "Human"]
             assert indexes[0][7] == ["uid", "age"]
+
+
+class TestNeo4jModelRegistration:
+    class TestNeo4jRegisterModelClass:
+        async def test_registers_model_classes(self, neo4j_client):
+            class Human(NodeModel):
+                ogm_config = {"labels": {"Human"}}
+
+            class HasEmotion(RelationshipModel):
+                ogm_config = {"type": "HAS_EMOTION"}
+
+            await neo4j_client.register_models(Human, HasEmotion)
+
+            assert len(neo4j_client._registered_models) == 2
+            assert Human._identifier_hash() in neo4j_client._registered_models
+            assert HasEmotion._identifier_hash() in neo4j_client._registered_models
+            assert len(neo4j_client._initialized_model_hashes) == 2
+            assert Human._identifier_hash() in neo4j_client._initialized_model_hashes
+            assert HasEmotion._identifier_hash() in neo4j_client._initialized_model_hashes
+
+        async def test_raises_on_duplicate_node_model_registration(self, neo4j_client):
+            class HumanOne(NodeModel):
+                ogm_config = {"labels": {"Human"}}
+
+            class HumanTwo(NodeModel):
+                ogm_config = {"labels": {"Human"}}
+
+            with pytest.raises(DuplicateModelError):
+                await neo4j_client.register_models(HumanOne, HumanTwo)
+
+        async def test_raises_on_duplicate_multi_label_node_model_registration(self, neo4j_client):
+            class HumanOne(NodeModel):
+                ogm_config = {"labels": {"Human", "Special"}}
+
+            class HumanTwo(NodeModel):
+                ogm_config = {"labels": {"Human", "Special"}}
+
+            with pytest.raises(DuplicateModelError):
+                await neo4j_client.register_models(HumanOne, HumanTwo)
+
+        async def test_raises_on_duplicate_relationship_model_registration(self, neo4j_client):
+            class HasEmotionOne(RelationshipModel):
+                ogm_config = {"type": "HAS_EMOTION"}
+
+            class HasEmotionTwo(RelationshipModel):
+                ogm_config = {"type": "HAS_EMOTION"}
+
+            with pytest.raises(DuplicateModelError):
+                await neo4j_client.register_models(HasEmotionOne, HasEmotionTwo)
+
+    class TestNeo4jRegisterModelDirectory:
+        async def test_registers_models_from_dir(self, neo4j_client):
+            await neo4j_client.register_models_directory(
+                path.join(path.dirname(__file__), "..", "model_imports", "valid")
+            )
+
+            assert len(neo4j_client._registered_models) == 5
+            assert TopNodeModel._identifier_hash() in neo4j_client._registered_models
+            assert TopRelationshipModel._identifier_hash() in neo4j_client._registered_models
+            assert NestedNodeModel._identifier_hash() in neo4j_client._registered_models
+            assert NestedRelationshipModel._identifier_hash() in neo4j_client._registered_models
+
+            assert len(neo4j_client._initialized_model_hashes) == 5
+            assert TopNodeModel._identifier_hash() in neo4j_client._initialized_model_hashes
+            assert TopRelationshipModel._identifier_hash() in neo4j_client._initialized_model_hashes
+            assert NestedNodeModel._identifier_hash() in neo4j_client._initialized_model_hashes
+            assert NestedRelationshipModel._identifier_hash() in neo4j_client._initialized_model_hashes
+
+        async def test_ignores_non_python_files(self, neo4j_client):
+            await neo4j_client.register_models_directory(
+                path.join(path.dirname(__file__), "..", "model_imports", "invalid_file_type")
+            )
+
+            assert len(neo4j_client._registered_models) == 0
+            assert len(neo4j_client._initialized_model_hashes) == 0
+
+        async def test_raises_import_error_on_no_spec_returned(self, neo4j_client):
+            with patch("importlib.util.spec_from_file_location", return_value=None):
+                with pytest.raises(ImportError):
+                    await neo4j_client.register_models_directory(
+                        path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                    )
+
+        async def test_raises_import_error_on_no_spec_loader_returned(self, neo4j_client):
+            mock_spec = MagicMock()
+            mock_spec.loader = None
+
+            with patch("importlib.util.spec_from_file_location", return_value=mock_spec):
+                with pytest.raises(ImportError):
+                    await neo4j_client.register_models_directory(
+                        path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                    )
+
+        async def test_raises_on_duplicate_model_identifier(self, neo4j_client):
+            with pytest.raises(DuplicateModelError):
+                await neo4j_client.register_models_directory(
+                    path.join(path.dirname(__file__), "..", "model_imports", "invalid_duplicate_model")
+                )
+
+            assert len(neo4j_client._registered_models) == 1
+            assert len(neo4j_client._initialized_model_hashes) == 0

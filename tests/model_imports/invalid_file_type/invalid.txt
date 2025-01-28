@@ -1,0 +1,14 @@
+from pyneo4j_ogm.models.node import NodeModel
+from pyneo4j_ogm.models.relationship import RelationshipModel
+
+
+class InvalidModel:
+    pass
+
+
+class InvalidFileTypeNodeModel(NodeModel):
+    pass
+
+
+class InvalidFileTypeRelationshipModel(RelationshipModel):
+    pass
