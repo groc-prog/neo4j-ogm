@@ -1,4 +1,4 @@
-# pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument
+# pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument, broad-exception-raised
 
 import asyncio
 from os import path
@@ -654,6 +654,16 @@ class TestNeo4jQueries:
 
             for result in results:
                 assert isinstance(result[0], neo4j.graph.Node)
+
+    async def test_batching_rolls_back_on_error(self, neo4j_client):
+        with patch.object(neo4j.AsyncTransaction, "rollback", new=AsyncMock()) as mock_rollback:
+            try:
+                async with neo4j_client.batching():
+                    raise Exception()
+            except Exception:
+                pass
+
+            mock_rollback.assert_awaited_once()
 
     async def test_batching_using_same_transaction(self, neo4j_client):
         neo4j_client._driver.session = MagicMock(wraps=neo4j_client._driver.session)

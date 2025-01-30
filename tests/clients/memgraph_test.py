@@ -1,4 +1,4 @@
-# pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument
+# pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument, broad-exception-raised
 
 import asyncio
 from os import path
@@ -743,6 +743,16 @@ class TestMemgraphQueries:
 
             for result in results:
                 assert isinstance(result[0], neo4j.graph.Node)
+
+    async def test_batching_rolls_back_on_error(self, memgraph_client):
+        with patch.object(neo4j.AsyncTransaction, "rollback", new=AsyncMock()) as mock_rollback:
+            try:
+                async with memgraph_client.batching():
+                    raise Exception()
+            except Exception:
+                pass
+
+            mock_rollback.assert_awaited_once()
 
     async def test_batching_using_same_transaction(self, memgraph_client):
         memgraph_client._driver.session = MagicMock(wraps=memgraph_client._driver.session)
