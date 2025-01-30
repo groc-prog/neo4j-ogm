@@ -60,7 +60,7 @@ def initialize_models_after(func):
         if await self.connected():
             initialize_func = cast(Optional[Callable], getattr(self, "_initialize_models", None))
             if initialize_func is None:
-                raise ValueError("Model initialization function not found")
+                raise ValueError("Model initialization function not found")  # pragma: no cover
 
             await initialize_func()
 
@@ -258,7 +258,7 @@ class Pyneo4jClient(ABC):
         the usage of multicommand transactions. To still be able to run the query, you can set the
         `auto_committing` parameter to `True`. In doing so, the query will be run using a new session
         rather than a current transaction. This also meant that those queries `will not be batched` with others
-        when using `with_batching`.
+        when using `batching`.
 
         Args:
             query (Union[str, LiteralString, Query]): Neo4j Query class or query string. Same as queries

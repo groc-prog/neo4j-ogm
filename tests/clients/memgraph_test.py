@@ -1912,6 +1912,14 @@ class TestMemgraphModelRegistration:
             with pytest.raises(DuplicateModelError):
                 await memgraph_client.register_models(HasEmotionOne, HasEmotionTwo)
 
+        async def test_ignores_non_model_classes(self, memgraph_client):
+            class NotAModel:
+                pass
+
+            await memgraph_client.register_models(NotAModel)
+
+            assert len(memgraph_client._registered_models) == 0
+
     class TestMemgraphRegisterModelDirectory:
         async def test_registers_models_from_dir(self, memgraph_client):
             await memgraph_client.register_models_directory(

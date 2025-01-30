@@ -1985,6 +1985,14 @@ class TestNeo4jModelRegistration:
             with pytest.raises(DuplicateModelError):
                 await neo4j_client.register_models(HasEmotionOne, HasEmotionTwo)
 
+        async def test_ignores_non_model_classes(self, neo4j_client):
+            class NotAModel:
+                pass
+
+            await neo4j_client.register_models(NotAModel)
+
+            assert len(neo4j_client._registered_models) == 0
+
     class TestNeo4jRegisterModelDirectory:
         async def test_registers_models_from_dir(self, neo4j_client):
             await neo4j_client.register_models_directory(
