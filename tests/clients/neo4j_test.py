@@ -1,5 +1,6 @@
 # pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument
 
+import asyncio
 from os import path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -643,6 +644,27 @@ class TestNeo4jQueries:
         await query.consume()
         assert len(result) == 2
 
+    async def test_batching_query(self, neo4j_client, neo4j_session):
+        await neo4j_session.run("CREATE (:Developer)")
+        await neo4j_session.run("CREATE (:Coffee)")
+
+        async with neo4j_client.batching():
+            results, _ = await neo4j_client.cypher("MATCH (n) RETURN n")
+            assert len(results) == 2
+
+            for result in results:
+                assert isinstance(result[0], neo4j.graph.Node)
+
+    async def test_batching_using_same_transaction(self, neo4j_client):
+        neo4j_client._driver.session = MagicMock(wraps=neo4j_client._driver.session)
+
+        async with neo4j_client.batching():
+            await neo4j_client.cypher("CREATE (:Developer)")
+            await neo4j_client.cypher("CREATE (:Coffee)")
+            await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+        assert neo4j_client._driver.session.call_count == 1
+
     async def test_cypher(self, neo4j_client, neo4j_session):
         labels = ["Developer", "Coffee"]
         result, keys = await neo4j_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})")
@@ -659,6 +681,17 @@ class TestNeo4jQueries:
         assert len(result[0][0].labels) == 1
         assert list(result[1][0].labels)[0] in labels
         assert list(result[1][0].labels)[0] in labels
+
+    async def test_cypher_uses_unique_transaction(self, neo4j_client):
+        neo4j_client._driver.session = MagicMock(wraps=neo4j_client._driver.session)
+
+        coroutine_one = neo4j_client.cypher("CREATE (:Developer)")
+        coroutine_two = neo4j_client.cypher("CREATE (:Coffee)")
+        coroutine_three = neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+        await asyncio.gather(coroutine_one, coroutine_two, coroutine_three)
+
+        assert neo4j_client._driver.session.call_count == 3
 
     async def test_cypher_with_params(self, neo4j_client, neo4j_session):
         result, keys = await neo4j_client.cypher("CREATE (n:Person) SET n.age = $age", {"age": 24})

@@ -1,5 +1,6 @@
 # pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument
 
+import asyncio
 from os import path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,7 +11,11 @@ from neo4j.exceptions import ClientError
 from typing_extensions import Annotated
 
 from pyneo4j_ogm.clients.memgraph import MemgraphClient
-from pyneo4j_ogm.exceptions import ClientNotInitializedError, DuplicateModelError
+from pyneo4j_ogm.exceptions import (
+    ClientNotInitializedError,
+    DuplicateModelError,
+    NoTransactionInProgressError,
+)
 from pyneo4j_ogm.models.node import NodeModel
 from pyneo4j_ogm.models.relationship import RelationshipModel
 from pyneo4j_ogm.options.field_options import (
@@ -739,6 +744,54 @@ class TestMemgraphQueries:
             for result in results:
                 assert isinstance(result[0], neo4j.graph.Node)
 
+    async def test_batching_using_same_transaction(self, memgraph_client):
+        memgraph_client._driver.session = MagicMock(wraps=memgraph_client._driver.session)
+
+        async with memgraph_client.batching():
+            await memgraph_client.cypher("CREATE (:Developer)")
+            await memgraph_client.cypher("CREATE (:Coffee)")
+            await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+        assert memgraph_client._driver.session.call_count == 1
+
+    async def test_batching_raises_on_shared_session_missing_when_committing(self, memgraph_client):
+        with pytest.raises(NoTransactionInProgressError):
+            async with memgraph_client.batching():
+                await memgraph_client.cypher("CREATE (:Developer)")
+                await memgraph_client.cypher("CREATE (:Coffee)")
+                await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+                memgraph_client._session = None
+
+    async def test_batching_raises_on_shared_transaction_missing_when_committing(self, memgraph_client):
+        with pytest.raises(NoTransactionInProgressError):
+            async with memgraph_client.batching():
+                await memgraph_client.cypher("CREATE (:Developer)")
+                await memgraph_client.cypher("CREATE (:Coffee)")
+                await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+                memgraph_client._transaction = None
+
+    async def test_batching_raises_on_shared_session_missing_when_rolling_back(self, memgraph_client):
+        with patch("time.perf_counter", side_effect=RuntimeError("perf_counter failed")):
+            with pytest.raises(NoTransactionInProgressError):
+                async with memgraph_client.batching():
+                    memgraph_client._session = None
+
+                    await memgraph_client.cypher("CREATE (:Developer)")
+                    await memgraph_client.cypher("CREATE (:Coffee)")
+                    await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+    async def test_batching_raises_on_shared_transaction_missing_when_rolling_back(self, memgraph_client):
+        with patch("time.perf_counter", side_effect=RuntimeError("perf_counter failed")):
+            with pytest.raises(NoTransactionInProgressError):
+                async with memgraph_client.batching():
+                    memgraph_client._transaction = None
+
+                    await memgraph_client.cypher("CREATE (:Developer)")
+                    await memgraph_client.cypher("CREATE (:Coffee)")
+                    await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
     async def test_cypher(self, memgraph_client, memgraph_session):
         labels = ["Developer", "Coffee"]
         result, keys = await memgraph_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})")
@@ -755,6 +808,17 @@ class TestMemgraphQueries:
         assert len(result[0][0].labels) == 1
         assert list(result[1][0].labels)[0] in labels
         assert list(result[1][0].labels)[0] in labels
+
+    async def test_cypher_uses_unique_transaction(self, memgraph_client):
+        memgraph_client._driver.session = MagicMock(wraps=memgraph_client._driver.session)
+
+        coroutine_one = memgraph_client.cypher("CREATE (:Developer)")
+        coroutine_two = memgraph_client.cypher("CREATE (:Coffee)")
+        coroutine_three = memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+        await asyncio.gather(coroutine_one, coroutine_two, coroutine_three)
+
+        assert memgraph_client._driver.session.call_count == 3
 
     async def test_cypher_with_params(self, memgraph_client, memgraph_session):
         result, keys = await memgraph_client.cypher("CREATE (n:Person) SET n.age = $age", {"age": 24})
