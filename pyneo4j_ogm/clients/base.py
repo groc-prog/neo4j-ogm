@@ -28,7 +28,6 @@ from pyneo4j_ogm.exceptions import (
     DuplicateModelError,
     ModelResolveError,
     NoTransactionInProgressError,
-    TransactionInProgressError,
 )
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.models.node import NodeModel
@@ -384,16 +383,25 @@ class Pyneo4jClient(ABC):
         """
         try:
             self._using_batching = True
+
             logger.info("Starting batch transaction")
-            await self.__begin_transaction()
+            session, transaction = await self.__begin_transaction()
+            self._session = session
+            self._transaction = transaction
 
             yield None
 
             logger.info("Batching transaction finished")
-            await self.__commit_transaction()
+            await self.__commit_transaction(self._session, self._transaction)
+            self._session = None
+            self._transaction = None
         except Exception as exc:
             logger.error(exc)
-            await self.__rollback_transaction()
+
+            await self.__rollback_transaction(self._session, self._transaction)
+            self._session = None
+            self._transaction = None
+
             raise exc
         finally:
             self._using_batching = False
@@ -410,62 +418,64 @@ class Pyneo4jClient(ABC):
         return self
 
     @ensure_initialized
-    async def __begin_transaction(self) -> None:
+    async def __begin_transaction(self) -> Tuple[AsyncSession, AsyncTransaction]:
         """
         Checks for existing sessions/transactions and begins new ones if none exist.
 
-        Raises:
-            TransactionInProgress: If a session/transaction is already in progress.
+        Returns:
+            Tuple[AsyncSession, AsyncTransaction]: A tuple containing the acquired session and
+                transaction.
         """
-        if self._session is not None or self._transaction is not None:
-            raise TransactionInProgressError()
-
         logger.debug("Acquiring new session")
-        self._session = cast(AsyncDriver, self._driver).session()
-        logger.debug("Session %s acquired", self._session)
+        session = cast(AsyncDriver, self._driver).session()
+        logger.debug("Session %s acquired", session)
 
-        logger.debug("Acquiring new transaction for session %s", self._session)
-        self._transaction = await self._session.begin_transaction()
-        logger.debug("Transaction %s for session %s acquired", self._transaction, self._session)
+        logger.debug("Acquiring new transaction for session %s", session)
+        transaction = await session.begin_transaction()
+        logger.debug("Transaction %s for session %s acquired", transaction, session)
+
+        return session, transaction
 
     @ensure_initialized
-    async def __commit_transaction(self) -> None:
+    async def __commit_transaction(
+        self, session: Optional[AsyncSession], transaction: Optional[AsyncTransaction]
+    ) -> None:
         """
         Commits the current transaction and closes it.
 
-        Raises:
-            NoTransactionInProgress: If no active session/transaction to commit.
+        Args:
+            session (Optional[AsyncSession]): The session to commit.
+            transaction (Optional[AsyncTransaction]): The transaction to commit.
         """
-        if self._session is None or self._transaction is None:
+        if session is None or transaction is None:
             raise NoTransactionInProgressError()
 
-        logger.debug("Committing transaction %s and closing session %s", self._transaction, self._session)
-        await self._transaction.commit()
-        self._transaction = None
+        logger.debug("Committing transaction %s and closing session %s", transaction, session)
+        await transaction.commit()
         logger.debug("Transaction committed")
 
-        await self._session.close()
-        self._session = None
+        await session.close()
         logger.debug("Session closed")
 
     @ensure_initialized
-    async def __rollback_transaction(self) -> None:
+    async def __rollback_transaction(
+        self, session: Optional[AsyncSession], transaction: Optional[AsyncTransaction]
+    ) -> None:
         """
         Rolls the current transaction back and closes it.
 
-        Raises:
-            NoTransactionInProgress: If no active session/transaction to roll back.
+        Args:
+            session (Optional[AsyncSession]): The session to commit.
+            transaction (Optional[AsyncTransaction]): The transaction to commit.
         """
-        if self._session is None or self._transaction is None:
+        if session is None or transaction is None:
             raise NoTransactionInProgressError()
 
-        logger.debug("Rolling back transaction %s and closing session %s", self._transaction, self._session)
-        await self._transaction.rollback()
-        self._transaction = None
+        logger.debug("Rolling back transaction %s and closing session %s", transaction, session)
+        await transaction.rollback()
         logger.debug("Transaction rolled back")
 
-        await self._session.close()
-        self._session = None
+        await session.close()
         logger.debug("Session closed")
 
     async def __with_implicit_transaction(
@@ -496,14 +506,20 @@ class Pyneo4jClient(ABC):
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
                 variables.
         """
+        session: Optional[AsyncSession] = None
+        transaction: Optional[AsyncTransaction] = None
+
         if not self._using_batching:
             # If we are currently using batching, we should already be inside a active session/transaction
-            await self.__begin_transaction()
+            session, transaction = await self.__begin_transaction()
+        else:
+            session = self._session
+            transaction = self._transaction
 
         try:
             logger.info("'%s' with parameters %s", query, parameters)
             query_start = perf_counter()
-            query_result = await cast(AsyncTransaction, self._transaction).run(cast(LiteralString, query), parameters)
+            query_result = await cast(AsyncTransaction, transaction).run(cast(LiteralString, query), parameters)
             query_duration = (perf_counter() - query_start) * 1000
 
             logger.debug("Parsing query results")
@@ -524,7 +540,7 @@ class Pyneo4jClient(ABC):
 
             if not self._using_batching:
                 # Again, don't commit anything to the database when batching is enabled
-                await self.__commit_transaction()
+                await self.__commit_transaction(session, transaction)
 
             return results, keys
         except Exception as exc:
@@ -532,7 +548,7 @@ class Pyneo4jClient(ABC):
 
             if not self._using_batching:
                 # Same as in the beginning, we don't want to roll back anything if we use batching
-                await self.__rollback_transaction()
+                await self.__rollback_transaction(session, transaction)
 
             raise exc
 

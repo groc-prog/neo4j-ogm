@@ -36,15 +36,6 @@ class ModelResolveError(Pyneo4jError):
         )
 
 
-class TransactionInProgressError(Pyneo4jError):
-    """
-    The client already has a open session/transaction in progress.
-    """
-
-    def __init__(self, *args) -> None:
-        super().__init__("There is already a session/transaction in progress.", *args)
-
-
 class NoTransactionInProgressError(Pyneo4jError):
     """
     There is no session/transaction to commit or roll back.
