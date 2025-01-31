@@ -14,7 +14,6 @@ from typing import (
     List,
     LiteralString,
     Optional,
-    Self,
     Set,
     Tuple,
     Type,
@@ -136,14 +135,14 @@ class Pyneo4jClient(ABC):
         self._registry.register(self)
 
     @abstractmethod
-    async def drop_constraints(self) -> Self:
+    async def drop_constraints(self) -> None:
         """
         Drops all existing constraints.
         """
         pass  # pragma: no cover
 
     @abstractmethod
-    async def drop_indexes(self) -> Self:
+    async def drop_indexes(self) -> None:
         """
         Drops all existing indexes.
         """
@@ -197,7 +196,7 @@ class Pyneo4jClient(ABC):
         skip_constraints: bool = False,
         skip_indexes: bool = False,
         **kwargs,
-    ) -> Self:
+    ) -> None:
         """
         Connects to the specified Neo4j/Memgraph database. This method also accepts the same arguments
         as the Neo4j Python driver.
@@ -208,9 +207,6 @@ class Pyneo4jClient(ABC):
                 to `False`.
             skip_indexes (bool): Whether to skip creating any indexes defined by models. Defaults to
                 `False`.
-
-        Returns:
-            Self: The client.
         """
         self._uri = uri
         self._skip_constraint_creation = skip_constraints
@@ -224,9 +220,7 @@ class Pyneo4jClient(ABC):
 
         logger.debug("Checking for compatible database version")
         await self._check_database_version()
-
         logger.info("Connected to %s", uri)
-        return self
 
     @ensure_initialized
     async def close(self) -> None:
@@ -290,7 +284,7 @@ class Pyneo4jClient(ABC):
             return await self.__with_implicit_transaction(query, query_parameters, resolve_models, raise_on_resolve_exc)
 
     @initialize_models_after
-    async def register_models(self, *args: Union[Type[NodeModel], Type[RelationshipModel]]) -> Self:
+    async def register_models(self, *args: Union[Type[NodeModel], Type[RelationshipModel]]) -> None:
         """
         Registers the provided models with the client. Can be omitted if automatic index/constraint creation
         and resolving models in queries is not required.
@@ -298,9 +292,6 @@ class Pyneo4jClient(ABC):
         Args:
             models (List[Union[Type[NodeModel], Type[RelationshipModel]]]): The models to register. Invalid model
                 instances will be skipped during the registration.
-
-        Returns:
-            Self: The client.
         """
         logger.debug("Registering models with client")
         original_count = len(self._registered_models)
@@ -327,19 +318,14 @@ class Pyneo4jClient(ABC):
         current_count = len(self._registered_models) - original_count
         logger.info("Registered %d models", current_count)
 
-        return self
-
     @initialize_models_after
-    async def register_models_directory(self, path: str) -> Self:
+    async def register_models_directory(self, path: str) -> None:
         """
         Recursively imports all discovered models from a given directory path and registers
         them with the client.
 
         Args:
             path (str): The path to the directory.
-
-        Returns:
-            Self: The client.
         """
         logger.debug("Registering models in directory %s", path)
         original_count = len(self._registered_models)
@@ -386,8 +372,6 @@ class Pyneo4jClient(ABC):
         current_count = len(self._registered_models) - original_count
         logger.info("Registered %d models", current_count)
 
-        return self
-
     @asynccontextmanager
     async def batching(self) -> AsyncGenerator[None, Any]:
         """
@@ -420,15 +404,13 @@ class Pyneo4jClient(ABC):
             self._using_batching = False
 
     @ensure_initialized
-    async def drop_nodes(self) -> Self:
+    async def drop_nodes(self) -> None:
         """
         Deletes all nodes and relationships.
         """
         logger.warning("Dropping all nodes and relationships")
         await self.cypher(f"MATCH {QueryBuilder.node_pattern("n")} DETACH DELETE n")
-
         logger.info("All nodes and relationships dropped")
-        return self
 
     def __identifier_hash(self, labels_or_type: Union[List[str], str]) -> str:
         """

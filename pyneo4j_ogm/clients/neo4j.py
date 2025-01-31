@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Dict, List, Optional, Self, Type, TypedDict, Union, cast
+from typing import Dict, List, Optional, Type, TypedDict, Union, cast
 from uuid import uuid4
 
 from neo4j import AsyncDriver
@@ -88,17 +88,17 @@ class Neo4jClient(Pyneo4jClient):
         skip_indexes: bool = False,
         allow_nested_properties: bool = True,
         **kwargs,
-    ) -> Self:
+    ) -> None:
         self._allow_nested_properties = allow_nested_properties
-        return await super().connect(uri, *args, skip_constraints=skip_constraints, skip_indexes=skip_indexes, **kwargs)
+        await super().connect(uri, *args, skip_constraints=skip_constraints, skip_indexes=skip_indexes, **kwargs)
 
     @ensure_initialized
-    async def drop_constraints(self) -> Self:
+    async def drop_constraints(self) -> None:
         logger.debug("Discovering constraints")
         constraints, _ = await self.cypher("SHOW CONSTRAINTS")
 
         if len(constraints) == 0:
-            return self
+            return
 
         logger.warning("Dropping %d constraints", len(constraints))
         for constraint in constraints:
@@ -106,15 +106,14 @@ class Neo4jClient(Pyneo4jClient):
             await self.cypher(f"DROP CONSTRAINT {constraint[1]}")
 
         logger.info("%d constraints dropped", len(constraints))
-        return self
 
     @ensure_initialized
-    async def drop_indexes(self) -> Self:
+    async def drop_indexes(self) -> None:
         logger.debug("Discovering indexes")
         indexes, _ = await self.cypher("SHOW INDEXES")
 
         if len(indexes) == 0:
-            return self
+            return
 
         logger.warning("Dropping %d indexes", len(indexes))
         for index in indexes:
@@ -122,7 +121,6 @@ class Neo4jClient(Pyneo4jClient):
             await self.cypher(f"DROP INDEX {index[1]}")
 
         logger.info("%d indexes dropped", len(indexes))
-        return self
 
     @ensure_initialized
     async def uniqueness_constraint(
@@ -132,7 +130,7 @@ class Neo4jClient(Pyneo4jClient):
         label_or_type: str,
         properties: Union[List[str], str],
         raise_on_existing: bool = False,
-    ) -> Self:
+    ) -> None:
         """
         Creates a uniqueness constraint for a given node or relationship. By default, this will use `IF NOT EXISTS`
         when creating constraints to prevent errors if the constraint already exists. This behavior can be changed by
@@ -146,9 +144,6 @@ class Neo4jClient(Pyneo4jClient):
             properties (Union[List[str], str]): The properties which should be affected by the constraint.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate constraints.
                 Defaults to `False`.
-
-        Returns:
-            Self: The client.
         """
         logger.info("Creating uniqueness constraint %s on %s", name, label_or_type)
         normalized_properties = [properties] if isinstance(properties, str) else properties
@@ -170,8 +165,6 @@ class Neo4jClient(Pyneo4jClient):
             f"CREATE CONSTRAINT {name}{existence_pattern} FOR {entity_pattern} REQUIRE {properties_pattern} IS UNIQUE"
         )
 
-        return self
-
     @ensure_initialized
     async def range_index(
         self,
@@ -180,7 +173,7 @@ class Neo4jClient(Pyneo4jClient):
         label_or_type: str,
         properties: Union[List[str], str],
         raise_on_existing: bool = False,
-    ) -> Self:
+    ) -> None:
         """
         Creates a range index for the given node or relationship. By default, this will se `IF NOT EXISTS`
         when creating indexes to prevent errors if the index already exists. This behavior can be
@@ -194,9 +187,6 @@ class Neo4jClient(Pyneo4jClient):
             properties (Union[List[str], str]): The properties which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
                 Defaults to `False`.
-
-        Returns:
-            Self: The client.
         """
         logger.info("Creating range index %s for %s", name, label_or_type)
         normalized_properties = [properties] if isinstance(properties, str) else properties
@@ -212,8 +202,6 @@ class Neo4jClient(Pyneo4jClient):
         logger.debug("Creating range index for %s on properties %s", label_or_type, properties_pattern)
         await self.cypher(f"CREATE INDEX {name}{existence_pattern} FOR {entity_pattern} ON ({properties_pattern})")
 
-        return self
-
     @ensure_initialized
     async def text_index(
         self,
@@ -222,7 +210,7 @@ class Neo4jClient(Pyneo4jClient):
         label_or_type: str,
         property_: str,
         raise_on_existing: bool = False,
-    ) -> Self:
+    ) -> None:
         """
         Creates a text index for the given node or relationship. By default, this will se `IF NOT EXISTS`
         when creating indexes to prevent errors if the index already exists. This behavior can be
@@ -236,9 +224,6 @@ class Neo4jClient(Pyneo4jClient):
             property_ (str): The property which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
                 Defaults to `False`.
-
-        Returns:
-            Self: The client.
         """
         logger.info("Creating text index %s for %s", name, label_or_type)
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
@@ -251,8 +236,6 @@ class Neo4jClient(Pyneo4jClient):
         logger.debug("Creating text index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE TEXT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
 
-        return self
-
     @ensure_initialized
     async def point_index(
         self,
@@ -261,7 +244,7 @@ class Neo4jClient(Pyneo4jClient):
         label_or_type: str,
         property_: str,
         raise_on_existing: bool = False,
-    ) -> Self:
+    ) -> None:
         """
         Creates a point index for the given node or relationship. By default, this will se `IF NOT EXISTS`
         when creating indexes to prevent errors if the index already exists. This behavior can be
@@ -275,9 +258,6 @@ class Neo4jClient(Pyneo4jClient):
             property_ (str): The property which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
                 Defaults to `False`.
-
-        Returns:
-            Self: The client.
         """
         logger.info("Creating point index %s for %s", name, label_or_type)
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
@@ -290,8 +270,6 @@ class Neo4jClient(Pyneo4jClient):
         logger.debug("Creating point index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE POINT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
 
-        return self
-
     @ensure_initialized
     async def fulltext_index(
         self,
@@ -300,7 +278,7 @@ class Neo4jClient(Pyneo4jClient):
         labels_or_types: Union[List[str], str],
         properties: Union[List[str], str],
         raise_on_existing: bool = False,
-    ) -> Self:
+    ) -> None:
         """
         Creates a fulltext index for the given node or relationship. By default, this will se `IF NOT EXISTS`
         when creating indexes to prevent errors if the index already exists. This behavior can be
@@ -314,9 +292,6 @@ class Neo4jClient(Pyneo4jClient):
             properties (Union[List[str], str]): The properties which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
                 Defaults to `False`.
-
-        Returns:
-            Self: The client.
         """
         logger.info("Creating fulltext index %s for %s", name, labels_or_types)
         normalized_properties = [properties] if isinstance(properties, str) else properties
@@ -334,8 +309,6 @@ class Neo4jClient(Pyneo4jClient):
             f"CREATE FULLTEXT INDEX {name}{existence_pattern} FOR {entity_pattern} ON EACH [{properties_pattern}]"
         )
 
-        return self
-
     @ensure_initialized
     @ensure_neo4j_version(5, 18, 0)
     async def vector_index(
@@ -345,7 +318,7 @@ class Neo4jClient(Pyneo4jClient):
         label_or_type: str,
         property_: str,
         raise_on_existing: bool = False,
-    ) -> Self:
+    ) -> None:
         """
         Creates a vector index for the given node or relationship. By default, this will se `IF NOT EXISTS`
         when creating indexes to prevent errors if the index already exists. This behavior can be
@@ -359,9 +332,6 @@ class Neo4jClient(Pyneo4jClient):
             property_ (str): The property which should be affected by the index.
             raise_on_existing (bool): Whether to use `IF NOT EXISTS` to prevent errors when creating duplicate indexes.
                 Defaults to `False`.
-
-        Returns:
-            Self: The client.
         """
         logger.info("Creating vector index %s for %s", name, label_or_type)
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
@@ -373,8 +343,6 @@ class Neo4jClient(Pyneo4jClient):
 
         logger.debug("Creating vector index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE VECTOR INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
-
-        return self
 
     @ensure_initialized
     async def _check_database_version(self) -> None:
