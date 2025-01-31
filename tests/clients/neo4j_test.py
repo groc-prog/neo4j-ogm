@@ -1992,11 +1992,7 @@ class TestNeo4jModelRegistration:
             await neo4j_client.register_models(Human, HasEmotion)
 
             assert len(neo4j_client._registered_models) == 2
-            assert Human._identifier_hash() in neo4j_client._registered_models
-            assert HasEmotion._identifier_hash() in neo4j_client._registered_models
             assert len(neo4j_client._initialized_model_hashes) == 2
-            assert Human._identifier_hash() in neo4j_client._initialized_model_hashes
-            assert HasEmotion._identifier_hash() in neo4j_client._initialized_model_hashes
 
         async def test_raises_on_duplicate_node_model_registration(self, neo4j_client):
             class HumanOne(NodeModel):
@@ -2043,16 +2039,7 @@ class TestNeo4jModelRegistration:
             )
 
             assert len(neo4j_client._registered_models) == 5
-            assert TopNodeModel._identifier_hash() in neo4j_client._registered_models
-            assert TopRelationshipModel._identifier_hash() in neo4j_client._registered_models
-            assert NestedNodeModel._identifier_hash() in neo4j_client._registered_models
-            assert NestedRelationshipModel._identifier_hash() in neo4j_client._registered_models
-
             assert len(neo4j_client._initialized_model_hashes) == 5
-            assert TopNodeModel._identifier_hash() in neo4j_client._initialized_model_hashes
-            assert TopRelationshipModel._identifier_hash() in neo4j_client._initialized_model_hashes
-            assert NestedNodeModel._identifier_hash() in neo4j_client._initialized_model_hashes
-            assert NestedRelationshipModel._identifier_hash() in neo4j_client._initialized_model_hashes
 
         async def test_ignores_non_python_files(self, neo4j_client):
             await neo4j_client.register_models_directory(

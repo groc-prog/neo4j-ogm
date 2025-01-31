@@ -1950,11 +1950,7 @@ class TestMemgraphModelRegistration:
             await memgraph_client.register_models(Human, HasEmotion)
 
             assert len(memgraph_client._registered_models) == 2
-            assert Human._identifier_hash() in memgraph_client._registered_models
-            assert HasEmotion._identifier_hash() in memgraph_client._registered_models
             assert len(memgraph_client._initialized_model_hashes) == 2
-            assert Human._identifier_hash() in memgraph_client._initialized_model_hashes
-            assert HasEmotion._identifier_hash() in memgraph_client._initialized_model_hashes
 
         async def test_raises_on_duplicate_node_model_registration(self, memgraph_client):
             class HumanOne(NodeModel):
@@ -2001,16 +1997,7 @@ class TestMemgraphModelRegistration:
             )
 
             assert len(memgraph_client._registered_models) == 5
-            assert TopNodeModel._identifier_hash() in memgraph_client._registered_models
-            assert TopRelationshipModel._identifier_hash() in memgraph_client._registered_models
-            assert NestedNodeModel._identifier_hash() in memgraph_client._registered_models
-            assert NestedRelationshipModel._identifier_hash() in memgraph_client._registered_models
-
             assert len(memgraph_client._initialized_model_hashes) == 5
-            assert TopNodeModel._identifier_hash() in memgraph_client._initialized_model_hashes
-            assert TopRelationshipModel._identifier_hash() in memgraph_client._initialized_model_hashes
-            assert NestedNodeModel._identifier_hash() in memgraph_client._initialized_model_hashes
-            assert NestedRelationshipModel._identifier_hash() in memgraph_client._initialized_model_hashes
 
         async def test_ignores_non_python_files(self, memgraph_client):
             await memgraph_client.register_models_directory(

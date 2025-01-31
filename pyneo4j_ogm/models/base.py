@@ -1,4 +1,3 @@
-import hashlib
 import json
 from copy import deepcopy
 from typing import Any, ClassVar, Dict, List, Optional, Self, Set, Union, cast
@@ -44,21 +43,6 @@ class ModelBase(BaseModel):
 
         merged_config = cls.__merge_config(parent_config.model_dump(), model_config.model_dump())
         setattr(cls, "ogm_config", ModelConfigurationValidator(**merged_config).model_dump())
-
-    @classmethod
-    def _identifier_hash(cls) -> str:
-        """
-        Returns a hash identifier for the given model. This hash i created from the models type or labels and
-        will be the same for models with the same type/label.
-
-        Returns:
-            str: The generated hash.
-        """
-        labels_or_type = (
-            cls._ogm_config.labels if isinstance(cls._ogm_config, ValidatedNodeConfiguration) else cls._ogm_config.type
-        )
-        combined = labels_or_type if not isinstance(labels_or_type, list) else "__".join(labels_or_type)
-        return hashlib.sha256(combined.encode()).hexdigest()
 
     @classmethod
     def _inflate(cls, graph_entity: Union[Node, Relationship]) -> Self:

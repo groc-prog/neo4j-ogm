@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import inspect
 import os
@@ -32,6 +33,7 @@ from pyneo4j_ogm.exceptions import (
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.models.node import NodeModel
 from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.options.model_options import ValidatedNodeConfiguration
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.registry import Registry
 
@@ -307,7 +309,13 @@ class Pyneo4jClient(ABC):
             if not issubclass(model, (NodeModel, RelationshipModel)):
                 continue
 
-            model_hash = model._identifier_hash()
+            labels_or_type = (
+                model._ogm_config.labels
+                if isinstance(model._ogm_config, ValidatedNodeConfiguration)
+                else model._ogm_config.type
+            )
+            model_hash = self.__identifier_hash(labels_or_type)
+
             if model_hash in self._registered_models:
                 raise DuplicateModelError(
                     model.__class__.__name__, self._registered_models[model_hash].__class__.__name__
@@ -354,21 +362,26 @@ class Pyneo4jClient(ABC):
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
 
-                for _, cls in inspect.getmembers(
+                for _, model in inspect.getmembers(
                     module,
                     lambda x: inspect.isclass(x)
                     and issubclass(x, (NodeModel, RelationshipModel))
                     and x is not NodeModel
                     and x is not RelationshipModel,
                 ):
-                    model_hash = cast(Union[NodeModel, RelationshipModel], cls)._identifier_hash()
+                    labels_or_type = (
+                        model._ogm_config.labels
+                        if isinstance(model._ogm_config, ValidatedNodeConfiguration)
+                        else model._ogm_config.type
+                    )
+                    model_hash = self.__identifier_hash(labels_or_type)
                     if model_hash in self._registered_models:
                         raise DuplicateModelError(
-                            cls.__class__.__name__, self._registered_models[model_hash].__class__.__name__
+                            model.__class__.__name__, self._registered_models[model_hash].__class__.__name__
                         )
 
                     logger.debug("Registering model %s", model_hash)
-                    self._registered_models[model_hash] = cls
+                    self._registered_models[model_hash] = model
 
         current_count = len(self._registered_models) - original_count
         logger.info("Registered %d models", current_count)
@@ -416,6 +429,20 @@ class Pyneo4jClient(ABC):
 
         logger.info("All nodes and relationships dropped")
         return self
+
+    def __identifier_hash(self, labels_or_type: Union[List[str], str]) -> str:
+        """
+        Returns a hash identifier for the given model. This hash i created from the models type or labels and
+        will be the same for models with the same type/label.
+
+        Args:
+            labels_or_type (Union[List[str], str]): The labels/type of the node/relationship.
+
+        Returns:
+            str: The generated hash.
+        """
+        combined = labels_or_type if not isinstance(labels_or_type, list) else "__".join(sorted(labels_or_type))
+        return hashlib.sha256(combined.encode()).hexdigest()
 
     @ensure_initialized
     async def __begin_transaction(self) -> Tuple[AsyncSession, AsyncTransaction]:

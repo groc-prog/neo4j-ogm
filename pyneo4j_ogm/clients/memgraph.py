@@ -383,14 +383,6 @@ class MemgraphClient(Pyneo4jClient):
                 # If it is a DataTypeConstraint, we need to set the data_type property and validate that there has
                 # only been one or the same data type defined
                 if isinstance(option, DataTypeConstraint):
-                    if (
-                        mapped_options[map_key]["data_type"] is not None
-                        and mapped_options[map_key]["data_type"] != option.data_type
-                    ):
-                        raise ValueError(
-                            f"Multiple different data types defined for field {field_name} in model {model.__name__}"
-                        )
-
                     if mapped_options[map_key]["data_type"] is None:
                         mapped_options[map_key]["data_type"] = option.data_type
 

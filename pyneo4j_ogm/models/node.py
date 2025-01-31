@@ -36,9 +36,5 @@ class NodeModel(ModelBase):
 
         if len(custom_labels) == 0:
             cast(List[str], cls.ogm_config["labels"]).append(cls.__name__)
-        else:
-            for label in model_config.labels:
-                if label not in cls.ogm_config["labels"]:
-                    cast(List[str], cls.ogm_config["labels"]).append(label)
 
         cls._ogm_config = ValidatedNodeConfiguration.model_validate(cls.ogm_config)
