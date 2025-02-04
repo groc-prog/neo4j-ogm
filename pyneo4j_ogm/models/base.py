@@ -2,8 +2,9 @@ import json
 from copy import deepcopy
 from typing import Any, ClassVar, Dict, List, Optional, Self, Set, Union, cast
 
-from neo4j.graph import Node, Relationship
+from neo4j.graph import Graph, Node, Relationship
 from pydantic import BaseModel, Field, PrivateAttr
+from typing_extensions import get_args, get_origin
 
 from pyneo4j_ogm.data_types import ALLOWED_NEO4J_LIST_TYPES, ALLOWED_TYPES
 from pyneo4j_ogm.exceptions import DeflationError, InflationError
@@ -22,11 +23,12 @@ class ModelBase(BaseModel):
     of model properties.
     """
 
-    id: Optional[int] = Field(None, frozen=True)
-    element_id: Optional[str] = Field(None, frozen=True)
+    id: Optional[int] = Field(default=None, frozen=True)
+    element_id: Optional[str] = Field(default=None, frozen=True)
 
+    _graph: Optional[Graph] = PrivateAttr()
     _registry: Registry = PrivateAttr()
-    _ogm_config: ClassVar[Union[ValidatedNodeConfiguration, ValidatedRelationshipConfiguration]]
+    _ogm_config: ClassVar[Union[ValidatedNodeConfiguration, ValidatedRelationshipConfiguration]] = PrivateAttr()
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -43,6 +45,10 @@ class ModelBase(BaseModel):
 
         merged_config = cls.__merge_config(parent_config.model_dump(), model_config.model_dump())
         setattr(cls, "ogm_config", ModelConfigurationValidator(**merged_config).model_dump())
+
+    @property
+    def graph(self) -> Optional[Graph]:
+        return self._graph
 
     @classmethod
     def _inflate(cls, graph_entity: Union[Node, Relationship]) -> Self:
@@ -61,6 +67,8 @@ class ModelBase(BaseModel):
 
         logger.debug("Inflating graph entity %s into model %s", graph_entity.element_id, cls.__name__)
         graph_properties = dict(graph_entity)
+        graph_properties["id"] = graph_entity.id
+        graph_properties["element_id"] = graph_entity.element_id
 
         inflatable: Dict[str, Any] = {}
 
@@ -73,11 +81,17 @@ class ModelBase(BaseModel):
 
             # Since Neo4j can have properties which have been stringified, we need to check if we
             # need to parse them before validating the model
-            if (
-                isinstance(graph_value, str)
-                and field_info.annotation is not None
-                and not issubclass(field_info.annotation, str)
-            ):
+            is_str = False
+
+            if field_info.annotation is not None:
+                origin = get_origin(field_info.annotation)
+
+                if origin is None:
+                    is_str = issubclass(field_info.annotation, str)
+                elif origin is Union:
+                    is_str = any(issubclass(arg, str) for arg in get_args(field_info.annotation))
+
+            if isinstance(graph_value, str) and field_info.annotation is not None and not is_str:
                 if isinstance(client, Neo4jClient) and getattr(client, "_allow_nested_properties", True) is False:
                     logger.error(
                         "Encountered stringified property %s, but `allow_nested_properties` is set to False", field_name
@@ -93,7 +107,9 @@ class ModelBase(BaseModel):
             else:
                 inflatable[field_name] = graph_value
 
-        return cls.model_validate(inflatable)
+        inflated = cls.model_validate(inflatable)
+        inflated._graph = graph_entity.graph
+        return inflated
 
     @classmethod
     def _deflate(cls, dict_model: Dict[str, Any]) -> Dict[str, Any]:
