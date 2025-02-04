@@ -1,5 +1,7 @@
 from typing import ClassVar, List, Set, cast
 
+from pydantic import PrivateAttr
+
 from pyneo4j_ogm.models.base import ModelBase
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
@@ -19,7 +21,7 @@ class NodeModel(ModelBase):
     Configuration for the pyneo4j model, should be a dictionary conforming to [`NodeConfig`][pyneo4j_ogm.options.model_options.NodeConfig].
     """
 
-    _ogm_config: ClassVar[ValidatedNodeConfiguration]
+    _ogm_config: ClassVar[ValidatedNodeConfiguration] = PrivateAttr()
 
     def __init_subclass__(cls, **kwargs):
         model_config = ModelConfigurationValidator(**getattr(cls, "ogm_config", {}))
