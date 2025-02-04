@@ -22,6 +22,7 @@ from typing import (
 )
 
 from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession, AsyncTransaction, Query
+from neo4j.graph import Node, Path, Relationship
 
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
@@ -31,6 +32,7 @@ from pyneo4j_ogm.exceptions import (
 )
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.models.node import NodeModel
+from pyneo4j_ogm.models.path import PathContainer
 from pyneo4j_ogm.models.relationship import RelationshipModel
 from pyneo4j_ogm.options.model_options import ValidatedNodeConfiguration
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
@@ -240,8 +242,7 @@ class Pyneo4jClient(ABC):
         query: Union[str, LiteralString, Query],
         parameters: Optional[Dict[str, Any]] = None,
         auto_committing: bool = False,
-        resolve_models: bool = False,
-        raise_on_resolve_exc: bool = False,
+        resolve_models: bool = True,
     ) -> Tuple[List[List[Any]], List[str]]:
         """
         Runs the defined Cypher query with the given parameters. Returned nodes/relationships
@@ -263,9 +264,7 @@ class Pyneo4jClient(ABC):
             auto_committing (bool): Whether to use session or transaction for running the query. Can be used for
                 Memgraph queries using info reporting. Defaults to `false`.
             resolve_models (bool): Whether to attempt to resolve the nodes/relationships returned by the query
-                to their corresponding models. Models must be registered for this to work. Defaults to `False`.
-            raise_on_resolve_exc (bool): Whether to silently fail or raise a `ModelResolveError` error if resolving
-                a node/relationship fails. Defaults to `False`.
+                to their corresponding models. Models must be registered for this to work. Defaults to `True`.
 
         Returns:
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
@@ -277,11 +276,9 @@ class Pyneo4jClient(ABC):
             query_parameters = parameters
 
         if auto_committing:
-            return await self.__with_auto_committing_transaction(
-                query, query_parameters, resolve_models, raise_on_resolve_exc
-            )
+            return await self.__with_auto_committing_transaction(query, query_parameters, resolve_models)
         else:
-            return await self.__with_implicit_transaction(query, query_parameters, resolve_models, raise_on_resolve_exc)
+            return await self.__with_implicit_transaction(query, query_parameters, resolve_models)
 
     @initialize_models_after
     async def register_models(self, *args: Union[Type[NodeModel], Type[RelationshipModel]]) -> None:
@@ -423,7 +420,11 @@ class Pyneo4jClient(ABC):
         Returns:
             str: The generated hash.
         """
-        combined = labels_or_type if not isinstance(labels_or_type, list) else "__".join(sorted(labels_or_type))
+        combined = (
+            f"__relationship_model_{labels_or_type}"
+            if not isinstance(labels_or_type, list)
+            else f"__node_model_{'__'.join(sorted(labels_or_type))}"
+        )
         return hashlib.sha256(combined.encode()).hexdigest()
 
     @ensure_initialized
@@ -492,7 +493,6 @@ class Pyneo4jClient(ABC):
         query: Union[str, LiteralString, Query],
         parameters: Dict[str, Any],
         resolve_models: bool,
-        raise_on_resolve_exc: bool,
     ) -> Tuple[List[List[Any]], List[str]]:
         """
         Runs a query with manually handled transactions, allowing for batching and finer control over
@@ -505,11 +505,6 @@ class Pyneo4jClient(ABC):
                 for the Neo4j driver. Defaults to `None`.
             resolve_models (bool): Whether to attempt to resolve the nodes/relationships returned by the query
                 to their corresponding models. Models must be registered for this to work. Defaults to `False`.
-            raise_on_resolve_exc (bool): Whether to silently fail or raise a `ModelResolveError` error if resolving
-                a node/relationship fails. Defaults to `False`.
-
-        Raises:
-            ModelResolveError: If `raise_on_resolve_exc` is set to `True` and resolving a result fails.
 
         Returns:
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
@@ -536,13 +531,7 @@ class Pyneo4jClient(ABC):
             keys = list(query_result.keys())
 
             if resolve_models:
-                try:
-                    # TODO: Try to resolve models and raise an exception depending on the parameters provided
-                    pass
-                except Exception as exc:
-                    logger.warning("Resolving models failed with %s", exc)
-                    if raise_on_resolve_exc:
-                        raise ModelResolveError() from exc
+                results = self.__resolve_graph_entity(results)
 
             summary = await query_result.consume()
             logger.info("Query finished after %dms", summary.result_available_after or query_duration)
@@ -566,7 +555,6 @@ class Pyneo4jClient(ABC):
         query: Union[str, LiteralString, Query],
         parameters: Dict[str, Any],
         resolve_models: bool,
-        raise_on_resolve_exc: bool,
     ) -> Tuple[List[List[Any]], List[str]]:
         """
         Runs a auto-committing query using a session rather than a transaction. This has to be used
@@ -580,11 +568,6 @@ class Pyneo4jClient(ABC):
                 for the Neo4j driver. Defaults to `None`.
             resolve_models (bool): Whether to attempt to resolve the nodes/relationships returned by the query
                 to their corresponding models. Models must be registered for this to work. Defaults to `False`.
-            raise_on_resolve_exc (bool): Whether to silently fail or raise a `ModelResolveError` error if resolving
-                a node/relationship fails. Defaults to `False`.
-
-        Raises:
-            ModelResolveError: If `raise_on_resolve_exc` is set to `True` and resolving a result fails.
 
         Returns:
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
@@ -605,13 +588,7 @@ class Pyneo4jClient(ABC):
             keys = list(query_result.keys())
 
             if resolve_models:
-                try:
-                    # TODO: Try to resolve models and raise an exception depending on the parameters provided
-                    pass
-                except Exception as exc:
-                    logger.warning("Resolving models failed with %s", exc)
-                    if raise_on_resolve_exc:
-                        raise ModelResolveError() from exc
+                results = self.__resolve_graph_entity(results)
 
             summary = await query_result.consume()
             logger.info("Query finished after %dms", summary.result_available_after or query_duration)
@@ -624,3 +601,156 @@ class Pyneo4jClient(ABC):
         except Exception as exc:
             logger.error("Query exception: %s", exc)
             raise exc
+
+    def __resolve_graph_entity(self, query_results: List[List[Any]]) -> List[List[Any]]:
+        """
+        Resolves the provided list of query results to their corresponding models.
+
+        Args:
+            query_results (List[List[Any]]): The list of results to resolve.
+
+        Returns:
+            List[List[Any]]: The resolved list of results.
+        """
+        resolved_result: List[List[Any]] = []
+
+        if len(query_results) == 0:
+            return query_results
+
+        for list_index, result_list in enumerate(query_results):
+            resolved_result.append([])
+
+            for result_index, result in enumerate(result_list):
+                resolved_result[list_index].append([])
+
+                if isinstance(result, Node):
+                    resolved_result[list_index][result_index] = self.__resolve_graph_node(result)
+                elif isinstance(result, Relationship):
+                    resolved_result[list_index][result_index] = self.__resolve_graph_relationship(result)
+                elif isinstance(result, Path):
+                    resolved_result[list_index][result_index] = self.__resolve_graph_path(result)
+                    pass
+                else:
+                    # The result could also include some static values like strings/numbers/etc, in which case we do nothing
+                    resolved_result[list_index][result_index] = result
+
+        return resolved_result
+
+    def __resolve_graph_node(self, graph_node: Node) -> NodeModel:
+        """
+        Resolves the provided graph node to it's corresponding NodeModel instance.
+
+        Args:
+            graph_node (Node): The graph node to resolve.
+
+        Raises:
+            ModelResolveError: If the model is not registered.
+            ModelResolveError: If the model can not be inflated.
+
+        Returns:
+            NodeModel: Either the resolved NodeModel instance of the graph node if the
+                operation silently failed.
+        """
+        logger.debug("Attempting to resolve model for graph node %s", graph_node.element_id)
+        node_labels = list(graph_node.labels)
+        model_hash = self.__identifier_hash(node_labels)
+
+        if model_hash not in self._registered_models:
+            logger.error(
+                "Resolving graph entity to model failed. Graph entity %s has not corresponding registered model.",
+                node_labels,
+            )
+            raise ModelResolveError(node_labels)
+
+        try:
+            # We can be sure that this will be a instance of NodeModel since this should be ensured once the model
+            # is registered
+            model = cast(NodeModel, self._registered_models[model_hash])
+            return model._inflate(graph_node)
+        except Exception as exc:
+            logger.error(
+                "Resolving graph entity to model failed. Graph entity %s includes incompatible data or is not retrievable.",
+                node_labels,
+            )
+            raise ModelResolveError(node_labels) from exc
+
+    def __resolve_graph_relationship(self, graph_relationship: Relationship) -> RelationshipModel:
+        """
+        Resolves the provided graph node to it's corresponding RelationshipModel instance.
+
+        Args:
+            graph_relationship (Relationship): The graph relationship to resolve.
+
+        Raises:
+            ModelResolveError: If the model is not registered.
+            ModelResolveError: If the model can not be inflated.
+
+        Returns:
+            RelationshipModel: Either the resolved RelationshipModel instance of the graph node if the
+                operation silently failed.
+        """
+        logger.debug("Attempting to resolve model for graph node %s", graph_relationship.element_id)
+        model_hash = self.__identifier_hash(graph_relationship.type)
+
+        if model_hash not in self._registered_models:
+            logger.error(
+                "Resolving graph entity to model failed. Graph entity %s has not corresponding registered model.",
+                graph_relationship.type,
+            )
+            raise ModelResolveError(graph_relationship.type)
+
+        try:
+            # We can be sure that this will be a instance of RelationshipModel since this should be ensured once the model
+            # is registered
+            model = cast(RelationshipModel, self._registered_models[model_hash])
+            resolved_start_node = None
+            resolved_end_node = None
+
+            # If start and end node are also returned from the DB, we need to resolve them as well
+            # Since this can fail silently and we should only set the start/end node on the relationship if we have successfully
+            # resolved it, we need to check that here is well
+            if graph_relationship.start_node is not None:
+                resolved_start_node = self.__resolve_graph_node(graph_relationship.start_node)
+
+            if graph_relationship.end_node is not None:
+                resolved_end_node = self.__resolve_graph_node(graph_relationship.end_node)
+
+            return model._inflate(graph_relationship, resolved_start_node, resolved_end_node)
+        except Exception as exc:
+            logger.error(
+                "Resolving graph entity to model failed. Graph entity %s includes incompatible data or is not retrievable.",
+                graph_relationship.type,
+            )
+            raise ModelResolveError(graph_relationship.type) from exc
+
+    def __resolve_graph_path(self, graph_path: Path) -> PathContainer:
+        """
+        Resolves the provided graph path and it's nodes and relationships. If a single operation fails, a error will be raised.
+
+        Args:
+            graph_path (Path): The graph path to resolve.
+
+        Returns:
+            PathContainer: A container class providing the same interface as the `Path` class from the neo4j driver.
+        """
+        logger.debug("Attempting to resolve models for graph nodes and relationships in path")
+        nodes: List[NodeModel] = []
+        relationships: List[RelationshipModel] = []
+
+        try:
+            for node in graph_path.nodes:
+                resolved = self.__resolve_graph_node(node)
+                nodes.append(resolved)
+
+            for relationship in graph_path.relationships:
+                resolved = self.__resolve_graph_relationship(relationship)
+                relationships.append(resolved)
+
+            return PathContainer(tuple(nodes), tuple(relationships))
+        except ModelResolveError as exc:
+            raise exc
+        except Exception as exc:
+            logger.error(
+                "Resolving graph path entities to model failed. Graph entities include incompatible data or is not retrievable.",
+            )
+            raise ModelResolveError() from exc

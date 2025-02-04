@@ -1,6 +1,9 @@
 # pylint: disable=line-too-long
 
 
+from typing import List, Optional, Union
+
+
 class Pyneo4jError(Exception):
     """
     Base exception for all Pyneo4j exceptions.
@@ -30,10 +33,13 @@ class ModelResolveError(Pyneo4jError):
     The client failed to resolve a node/relationship to the corresponding model.
     """
 
-    def __init__(self, *args) -> None:
-        super().__init__(
-            "Model could not be resolved. This might mean that your data fails the validation of the model.", *args
+    def __init__(self, entity_labels_or_type: Optional[Union[List[str], str]] = None, *args) -> None:
+        msg = (
+            f"Graph entity {entity_labels_or_type} could not be resolved. This might mean that your data fails the validation of the model or the model was not registered."
+            if entity_labels_or_type is not None
+            else "Graph entity could not be resolved. This might mean that your data fails the validation of the model or the model was not registered."
         )
+        super().__init__(msg, *args)
 
 
 class NoTransactionInProgressError(Pyneo4jError):
