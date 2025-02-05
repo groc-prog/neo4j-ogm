@@ -29,6 +29,7 @@ from pyneo4j_ogm.exceptions import (
     DuplicateModelError,
     ModelResolveError,
     NoTransactionInProgressError,
+    Pyneo4jError,
 )
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.models.node import NodeModel
@@ -671,6 +672,9 @@ class Pyneo4jClient(ABC):
                 "Resolving graph entity to model failed. Graph entity %s includes incompatible data or is not retrievable.",
                 node_labels,
             )
+
+            if isinstance(exc, Pyneo4jError):
+                raise exc
             raise ModelResolveError(node_labels) from exc
 
     def __resolve_graph_relationship(self, graph_relationship: Relationship) -> RelationshipModel:
@@ -725,6 +729,9 @@ class Pyneo4jClient(ABC):
                 "Resolving graph entity to model failed. Graph entity %s includes incompatible data or is not retrievable.",
                 graph_relationship.type,
             )
+
+            if isinstance(exc, Pyneo4jError):
+                raise exc
             raise ModelResolveError(graph_relationship.type) from exc
 
     def __resolve_graph_path(self, graph_path: Path) -> PathContainer:
@@ -757,4 +764,7 @@ class Pyneo4jClient(ABC):
             logger.error(
                 "Resolving graph path entities to model failed. Graph entities include incompatible data or is not retrievable.",
             )
+
+            if isinstance(exc, Pyneo4jError):
+                raise exc
             raise ModelResolveError() from exc
