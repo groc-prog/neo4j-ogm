@@ -1015,7 +1015,7 @@ class TestNeo4jQueries:
             with pytest.raises(InflationError):
                 await neo4j_client.cypher("MATCH (n:Person) RETURN n")
 
-        async def test_raises_if_nested_properties_malformed(self, neo4j_session):
+        async def test_raises_if_nested_node_properties_malformed(self, neo4j_session):
             class Nested(BaseModel):
                 is_nested: bool
 
@@ -1040,6 +1040,123 @@ class TestNeo4jQueries:
 
             with pytest.raises(InflationError):
                 await neo4j_client.cypher("MATCH (n:Person) RETURN n")
+
+        async def test_raises_if_nested_relationship_start_or_end_node_properties_malformed(self, neo4j_session):
+            class Nested(BaseModel):
+                is_nested: bool
+
+            class Person(NodeModel):
+                nested: Nested
+
+            class Knows(RelationshipModel):
+                pass
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {nested: $nested_one})-[:KNOWS]->(:Person {nested: $nested_two})",
+                {"nested_one": '{"is_nested: true}', "nested_two": '{"is_nested": false}'},
+            )
+            await query.consume()
+
+            neo4j_client = Neo4jClient()
+            await neo4j_client.connect(
+                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, allow_nested_properties=False
+            )
+            await neo4j_client.register_models(Person, Knows)
+
+            with pytest.raises(InflationError):
+                await neo4j_client.cypher("MATCH (n:Person)-[r:KNOWS]->(m:Person) RETURN r, n, m")
+
+        async def test_raises_on_failed_node_inflate(self, neo4j_client, neo4j_session):
+            class Person(NodeModel):
+                id_: int
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {id_: $id_one})",
+                {"id_one": 1},
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person)
+
+            with patch.object(Person, "_inflate", side_effect=Exception()):
+                with pytest.raises(ModelResolveError):
+                    await neo4j_client.cypher("MATCH (n:Person) RETURN n")
+
+        async def test_raises_on_failed_relationship_inflate(self, neo4j_client, neo4j_session):
+            class Person(NodeModel):
+                id_: int
+
+            class Knows(RelationshipModel):
+                status: str
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {id_: $id_one})-[:KNOWS {status: $status}]->(:Person {id_: $id_two})",
+                {"id_one": 1, "id_two": 2, "status": "OK"},
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person, Knows)
+
+            with patch.object(Knows, "_inflate", side_effect=Exception()):
+                with pytest.raises(ModelResolveError):
+                    await neo4j_client.cypher("MATCH ()-[r:KNOWS]->() RETURN r")
+
+        async def test_raises_on_failed_relationship_start_or_end_node_inflate(self, neo4j_client, neo4j_session):
+            class Person(NodeModel):
+                id_: int
+
+            class Knows(RelationshipModel):
+                status: str
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {id_: $id_one})-[:KNOWS {status: $status}]->(:Person {id_: $id_two})",
+                {"id_one": 1, "id_two": 2, "status": "OK"},
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person, Knows)
+
+            with patch.object(Person, "_inflate", side_effect=Exception()):
+                with pytest.raises(ModelResolveError):
+                    await neo4j_client.cypher("MATCH (n)-[r:KNOWS]->(m) RETURN r, n, m")
+
+        async def test_raises_on_failed_path_node_inflate(self, neo4j_client, neo4j_session):
+            class Person(NodeModel):
+                id_: int
+
+            class Knows(RelationshipModel):
+                status: str
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {id_: $id_one})-[:KNOWS {status: $status}]->(:Person {id_: $id_two})",
+                {"id_one": 1, "id_two": 2, "status": "OK"},
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person, Knows)
+
+            with patch.object(Person, "_inflate", side_effect=Exception()):
+                with pytest.raises(ModelResolveError):
+                    await neo4j_client.cypher("MATCH path=(:Person)-[:KNOWS]->(:Person) RETURN path")
+
+        async def test_raises_on_failed_path_relationship_inflate(self, neo4j_client, neo4j_session):
+            class Person(NodeModel):
+                id_: int
+
+            class Knows(RelationshipModel):
+                status: str
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {id_: $id_one})-[:KNOWS {status: $status}]->(:Person {id_: $id_two})",
+                {"id_one": 1, "id_two": 2, "status": "OK"},
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person, Knows)
+
+            with patch.object(Knows, "_inflate", side_effect=Exception()):
+                with pytest.raises(ModelResolveError):
+                    await neo4j_client.cypher("MATCH path=(:Person)-[:KNOWS]->(:Person) RETURN path")
 
 
 class TestNeo4jModelInitialization:

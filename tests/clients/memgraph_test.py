@@ -1096,6 +1096,98 @@ class TestMemgraphQueries:
         assert results[0][0].items[3] == {"random_key": "something"}
         assert results[0][0].items[4] == [True, 4, 5.1]
 
+    async def test_raises_on_failed_node_inflate(self, memgraph_client, memgraph_session):
+        class Person(NodeModel):
+            id_: int
+
+        query = await memgraph_session.run(
+            "CREATE (:Person {id_: $id_one})",
+            {"id_one": 1},
+        )
+        await query.consume()
+
+        await memgraph_client.register_models(Person)
+
+        with patch.object(Person, "_inflate", side_effect=Exception()):
+            with pytest.raises(ModelResolveError):
+                await memgraph_client.cypher("MATCH (n:Person) RETURN n")
+
+    async def test_raises_on_failed_relationship_inflate(self, memgraph_client, memgraph_session):
+        class Person(NodeModel):
+            id_: int
+
+        class Knows(RelationshipModel):
+            status: str
+
+        query = await memgraph_session.run(
+            "CREATE (:Person {id_: $id_one})-[:KNOWS {status: $status}]->(:Person {id_: $id_two})",
+            {"id_one": 1, "id_two": 2, "status": "OK"},
+        )
+        await query.consume()
+
+        await memgraph_client.register_models(Person, Knows)
+
+        with patch.object(Knows, "_inflate", side_effect=Exception()):
+            with pytest.raises(ModelResolveError):
+                await memgraph_client.cypher("MATCH ()-[r:KNOWS]->() RETURN r")
+
+    async def test_raises_on_failed_relationship_start_or_end_node_inflate(self, memgraph_client, memgraph_session):
+        class Person(NodeModel):
+            id_: int
+
+        class Knows(RelationshipModel):
+            status: str
+
+        query = await memgraph_session.run(
+            "CREATE (:Person {id_: $id_one})-[:KNOWS {status: $status}]->(:Person {id_: $id_two})",
+            {"id_one": 1, "id_two": 2, "status": "OK"},
+        )
+        await query.consume()
+
+        await memgraph_client.register_models(Person, Knows)
+
+        with patch.object(Person, "_inflate", side_effect=Exception()):
+            with pytest.raises(ModelResolveError):
+                await memgraph_client.cypher("MATCH (n)-[r:KNOWS]->(m) RETURN r, n, m")
+
+    async def test_raises_on_failed_path_node_inflate(self, memgraph_client, memgraph_session):
+        class Person(NodeModel):
+            id_: int
+
+        class Knows(RelationshipModel):
+            status: str
+
+        query = await memgraph_session.run(
+            "CREATE (:Person {id_: $id_one})-[:KNOWS {status: $status}]->(:Person {id_: $id_two})",
+            {"id_one": 1, "id_two": 2, "status": "OK"},
+        )
+        await query.consume()
+
+        await memgraph_client.register_models(Person, Knows)
+
+        with patch.object(Person, "_inflate", side_effect=Exception()):
+            with pytest.raises(ModelResolveError):
+                await memgraph_client.cypher("MATCH path=(:Person)-[:KNOWS]->(:Person) RETURN path")
+
+    async def test_raises_on_failed_path_relationship_inflate(self, memgraph_client, memgraph_session):
+        class Person(NodeModel):
+            id_: int
+
+        class Knows(RelationshipModel):
+            status: str
+
+        query = await memgraph_session.run(
+            "CREATE (:Person {id_: $id_one})-[:KNOWS {status: $status}]->(:Person {id_: $id_two})",
+            {"id_one": 1, "id_two": 2, "status": "OK"},
+        )
+        await query.consume()
+
+        await memgraph_client.register_models(Person, Knows)
+
+        with patch.object(Knows, "_inflate", side_effect=Exception()):
+            with pytest.raises(ModelResolveError):
+                await memgraph_client.cypher("MATCH path=(:Person)-[:KNOWS]->(:Person) RETURN path")
+
 
 class TestMemgraphModelInitialization:
     async def test_skips_initialization_if_all_client_skips_defined(self, memgraph_session):
