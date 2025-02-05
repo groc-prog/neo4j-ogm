@@ -720,8 +720,6 @@ class Pyneo4jClient(ABC):
             except ModelResolveError:
                 # If this fails we can safely skip it
                 pass
-            except Exception as exc:
-                raise exc
 
             return model._inflate(graph_relationship, resolved_start_node, resolved_end_node)
         except Exception as exc:
@@ -758,13 +756,10 @@ class Pyneo4jClient(ABC):
                 relationships.append(resolved)
 
             return PathContainer(tuple(nodes), tuple(relationships))
-        except ModelResolveError as exc:
-            raise exc
         except Exception as exc:
             logger.error(
                 "Resolving graph path entities to model failed. Graph entities include incompatible data or is not retrievable.",
             )
 
-            if isinstance(exc, Pyneo4jError):
-                raise exc
-            raise ModelResolveError() from exc
+            # This should always some instance of Pyneo4jError
+            raise exc
