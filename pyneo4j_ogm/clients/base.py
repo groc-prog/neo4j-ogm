@@ -648,8 +648,7 @@ class Pyneo4jClient(ABC):
             ModelResolveError: If the model can not be inflated.
 
         Returns:
-            NodeModel: Either the resolved NodeModel instance of the graph node if the
-                operation silently failed.
+            NodeModel: The resolved NodeModel instance of the graph node.
         """
         logger.debug("Attempting to resolve model for graph node %s", graph_node.element_id)
         node_labels = list(graph_node.labels)
@@ -686,8 +685,7 @@ class Pyneo4jClient(ABC):
             ModelResolveError: If the model can not be inflated.
 
         Returns:
-            RelationshipModel: Either the resolved RelationshipModel instance of the graph node if the
-                operation silently failed.
+            RelationshipModel: The resolved RelationshipModel instance of the graph relationship.
         """
         logger.debug("Attempting to resolve model for graph node %s", graph_relationship.element_id)
         model_hash = self.__identifier_hash(graph_relationship.type)
@@ -707,13 +705,19 @@ class Pyneo4jClient(ABC):
             resolved_end_node = None
 
             # If start and end node are also returned from the DB, we need to resolve them as well
-            # Since this can fail silently and we should only set the start/end node on the relationship if we have successfully
-            # resolved it, we need to check that here is well
-            if graph_relationship.start_node is not None:
-                resolved_start_node = self.__resolve_graph_node(graph_relationship.start_node)
+            # This can fail depending on how the query is structure. For example, if we do not return the start/end node
+            # from the query in Memgraph, labels and properties will be missing on the `Relationship.start_node` property.
+            try:
+                if graph_relationship.start_node is not None:
+                    resolved_start_node = self.__resolve_graph_node(graph_relationship.start_node)
 
-            if graph_relationship.end_node is not None:
-                resolved_end_node = self.__resolve_graph_node(graph_relationship.end_node)
+                if graph_relationship.end_node is not None:
+                    resolved_end_node = self.__resolve_graph_node(graph_relationship.end_node)
+            except ModelResolveError:
+                # If this fails we can safely skip it
+                pass
+            except Exception as exc:
+                raise exc
 
             return model._inflate(graph_relationship, resolved_start_node, resolved_end_node)
         except Exception as exc:
