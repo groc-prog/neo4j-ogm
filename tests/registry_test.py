@@ -1,4 +1,4 @@
-# pylint: disable=missing-class-docstring, redefined-outer-name
+# pylint: disable=missing-class-docstring, redefined-outer-name, unused-import
 import threading
 from typing import List
 from unittest.mock import MagicMock
@@ -8,17 +8,7 @@ import pytest
 from pyneo4j_ogm.clients.base import Pyneo4jClient
 from pyneo4j_ogm.exceptions import NoClientFoundError
 from pyneo4j_ogm.registry import Registry, with_client
-
-
-@pytest.fixture(autouse=True)
-def reset_registry_state():
-    setattr(Registry._thread_ctx, "clients", set())
-    setattr(Registry._thread_ctx, "active_client", None)
-
-    yield
-
-    setattr(Registry._thread_ctx, "clients", set())
-    setattr(Registry._thread_ctx, "active_client", None)
+from tests.fixtures.registry import reset_registry_state
 
 
 @pytest.fixture

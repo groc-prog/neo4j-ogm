@@ -34,7 +34,8 @@ async def neo4j_client():
     yields:
         client (Neo4jClient): A Neo4jClient instance which is already connected to the database.
     """
-    client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+    client = Neo4jClient()
+    await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
     yield client
 
     await client.close()
@@ -48,7 +49,8 @@ async def memgraph_client():
     yields:
         client (MemgraphClient): A MemgraphClient instance which is already connected to the database.
     """
-    client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+    client = MemgraphClient()
+    await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
     yield client
 
     await client.close()

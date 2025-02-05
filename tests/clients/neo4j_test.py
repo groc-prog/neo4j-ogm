@@ -1,23 +1,30 @@
 # pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument, broad-exception-raised
 
 import asyncio
+import json
 from os import path
 from types import SimpleNamespace
+from typing import Any, Dict, List, Union
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import neo4j
 import neo4j.graph
 import pytest
 from neo4j.exceptions import AuthError, ClientError
+from pydantic import BaseModel
 from typing_extensions import Annotated
 
 from pyneo4j_ogm.clients.neo4j import Neo4jClient, ensure_neo4j_version
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
     DuplicateModelError,
+    InflationError,
+    ModelResolveError,
+    NoTransactionInProgressError,
     UnsupportedDatabaseVersionError,
 )
 from pyneo4j_ogm.models.node import NodeModel
+from pyneo4j_ogm.models.path import PathContainer
 from pyneo4j_ogm.models.relationship import RelationshipModel
 from pyneo4j_ogm.options.field_options import (
     FullTextIndex,
@@ -35,22 +42,22 @@ from tests.fixtures.db import (
     neo4j_client,
     neo4j_session,
 )
-from tests.model_imports.valid.nested.nested import (
-    NestedNodeModel,
-    NestedRelationshipModel,
-)
-from tests.model_imports.valid.top import TopNodeModel, TopRelationshipModel
+from tests.fixtures.registry import reset_registry_state
 
 
 async def setup_constraints(session: neo4j.AsyncSession):
-    await session.run("CREATE CONSTRAINT book_isbn FOR (book:Book) REQUIRE book.isbn IS UNIQUE")
-    await session.run("CREATE CONSTRAINT sequels FOR ()-[sequel:SEQUEL_OF]-() REQUIRE sequel.order IS UNIQUE")
-    await session.run(
+    query = await session.run("CREATE CONSTRAINT book_isbn FOR (book:Book) REQUIRE book.isbn IS UNIQUE")
+    await query.consume()
+    query = await session.run("CREATE CONSTRAINT sequels FOR ()-[sequel:SEQUEL_OF]-() REQUIRE sequel.order IS UNIQUE")
+    await query.consume()
+    query = await session.run(
         "CREATE CONSTRAINT book_title_year FOR (book:Book) REQUIRE (book.title, book.publicationYear) IS UNIQUE"
     )
-    await session.run(
+    await query.consume()
+    query = await session.run(
         "CREATE CONSTRAINT prequels FOR ()-[prequel:PREQUEL_OF]-() REQUIRE (prequel.order, prequel.author) IS UNIQUE"
     )
+    await query.consume()
 
     query = await session.run("SHOW CONSTRAINT")
     constraints = await query.values()
@@ -68,16 +75,22 @@ async def check_no_constraints(session: neo4j.AsyncSession):
 
 
 async def setup_indexes(session: neo4j.AsyncSession):
-    await session.run(
+    query = await session.run(
         "CREATE INDEX node_range_index FOR (n:LabelName) ON (n.propertyName_1, n.propertyName_2, n.propertyName_n)"
     )
-    await session.run(
+    await query.consume()
+    query = await session.run(
         "CREATE INDEX rel_range_index FOR ()-[r:TYPE_NAME]-() ON (r.propertyName_1, r.propertyName_2, r.propertyName_n)"
     )
-    await session.run("CREATE TEXT INDEX node_text_index FOR (n:LabelName) ON (n.propertyName_1)")
-    await session.run("CREATE TEXT INDEX rel_text_index FOR ()-[r:TYPE_NAME]-() ON (r.propertyName_1)")
-    await session.run("CREATE POINT INDEX node_point_index FOR (n:LabelName) ON (n.propertyName_1)")
-    await session.run("CREATE POINT INDEX rel_point_index FOR ()-[r:TYPE_NAME]-() ON (r.propertyName_1)")
+    await query.consume()
+    query = await session.run("CREATE TEXT INDEX node_text_index FOR (n:LabelName) ON (n.propertyName_1)")
+    await query.consume()
+    query = await session.run("CREATE TEXT INDEX rel_text_index FOR ()-[r:TYPE_NAME]-() ON (r.propertyName_1)")
+    await query.consume()
+    query = await session.run("CREATE POINT INDEX node_point_index FOR (n:LabelName) ON (n.propertyName_1)")
+    await query.consume()
+    query = await session.run("CREATE POINT INDEX rel_point_index FOR ()-[r:TYPE_NAME]-() ON (r.propertyName_1)")
+    await query.consume()
 
     query = await session.run("SHOW INDEXES")
     constraints = await query.values()
@@ -110,12 +123,6 @@ class TestNeo4jConnection:
         client = Neo4jClient()
         await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
 
-    async def test_connect_is_chainable(self):
-        client = Neo4jClient()
-        return_value = await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
-
-        assert client == return_value
-
     async def test_checks_connectivity_and_auth(self):
         async_driver_mock = AsyncMock(spec=neo4j.AsyncDriver)
 
@@ -145,13 +152,6 @@ class TestNeo4jConnection:
         with pytest.raises(AuthError):
             client = Neo4jClient()
             await client.connect(ConnectionString.NEO4J.value)
-
-    async def test_is_chainable(self):
-        client = Neo4jClient()
-        chainable = await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
-
-        assert isinstance(chainable, Neo4jClient)
-        assert chainable == client
 
     async def test_connected_state(self):
         client = Neo4jClient()
@@ -197,11 +197,6 @@ class TestNeo4jConnection:
 
 class TestNeo4jConstraints:
     class TestNeo4jUniquenessConstraint:
-        async def test_uniqueness_constraint_is_chainable(self, neo4j_session, neo4j_client):
-            await check_no_constraints(neo4j_session)
-            return_value = await neo4j_client.uniqueness_constraint("node_constraint", EntityType.NODE, "Person", "id")
-            assert neo4j_client == return_value
-
         async def test_node_uniqueness_constraint(self, neo4j_session, neo4j_client):
             await check_no_constraints(neo4j_session)
             await neo4j_client.uniqueness_constraint("node_constraint", EntityType.NODE, "Person", "id")
@@ -341,12 +336,6 @@ class TestNeo4jIndexes:
             assert indexes[0][6] == ["Person"]
             assert indexes[0][7] == ["age", "id"]
 
-        async def test_range_index_is_chainable(self, neo4j_session, neo4j_client):
-            return_value = await neo4j_client.range_index(
-                "range_index", EntityType.RELATIONSHIP, "Person", ["age", "id"]
-            )
-            assert neo4j_client == return_value
-
         async def test_raises_on_existing_range_index(self, neo4j_session, neo4j_client):
             await check_no_indexes(neo4j_session)
             await neo4j_client.range_index("range_index", EntityType.RELATIONSHIP, "Person", ["age", "id"])
@@ -383,10 +372,6 @@ class TestNeo4jIndexes:
             assert indexes[0][6] == ["Person"]
             assert indexes[0][7] == ["age"]
 
-        async def test_text_index_is_chainable(self, neo4j_session, neo4j_client):
-            return_value = await neo4j_client.text_index("text_index", EntityType.RELATIONSHIP, "Person", "age")
-            assert neo4j_client == return_value
-
         async def test_raises_on_existing_text_index(self, neo4j_session, neo4j_client):
             await check_no_indexes(neo4j_session)
             await neo4j_client.text_index("text_index", EntityType.RELATIONSHIP, "Person", "age")
@@ -422,10 +407,6 @@ class TestNeo4jIndexes:
             assert indexes[0][5] == EntityType.RELATIONSHIP.value
             assert indexes[0][6] == ["Person"]
             assert indexes[0][7] == ["age"]
-
-        async def test_point_index_is_chainable(self, neo4j_session, neo4j_client):
-            return_value = await neo4j_client.point_index("point_index", EntityType.RELATIONSHIP, "Person", "age")
-            assert neo4j_client == return_value
 
         async def test_raises_on_existing_point_index(self, neo4j_session, neo4j_client):
             await check_no_indexes(neo4j_session)
@@ -519,10 +500,6 @@ class TestNeo4jIndexes:
             assert indexes[0][6] == ["Person"]
             assert indexes[0][7] == ["age", "name"]
 
-        async def test_fulltext_index_is_chainable(self, neo4j_session, neo4j_client):
-            return_value = await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", "age")
-            assert neo4j_client == return_value
-
         async def test_raises_on_existing_fulltext_index(self, neo4j_session, neo4j_client):
             await check_no_indexes(neo4j_session)
             await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", "age")
@@ -559,10 +536,6 @@ class TestNeo4jIndexes:
             assert indexes[0][6] == ["Person"]
             assert indexes[0][7] == ["age"]
 
-        async def test_vector_index_is_chainable(self, neo4j_session, neo4j_client):
-            return_value = await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age")
-            assert neo4j_client == return_value
-
         async def test_raises_on_existing_vector_index(self, neo4j_session, neo4j_client):
             await check_no_indexes(neo4j_session)
             await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age")
@@ -581,176 +554,492 @@ class TestNeo4jIndexes:
 
 
 class TestNeo4jQueries:
-    async def test_drop_constraints(self, neo4j_session, neo4j_client):
-        await setup_constraints(neo4j_session)
-        return_value = await neo4j_client.drop_constraints()
-        assert neo4j_client == return_value
-
-        await check_no_constraints(neo4j_session)
-
-    async def test_drop_constraints_is_chainable(self, neo4j_session, neo4j_client):
-        return_value = await neo4j_client.drop_constraints()
-        assert neo4j_client == return_value
-
-    async def test_does_nothing_if_no_constraints_defined(self, neo4j_session, neo4j_client):
-        with patch("pyneo4j_ogm.clients.neo4j.Neo4jClient.cypher", wraps=neo4j_client.cypher) as cypher_spy:
+    class TestNeo4jUtilities:
+        async def test_drop_constraints(self, neo4j_session, neo4j_client):
+            await setup_constraints(neo4j_session)
             await neo4j_client.drop_constraints()
 
-            cypher_spy.assert_called_once()
+            await check_no_constraints(neo4j_session)
 
-    async def test_drop_indexes(self, neo4j_session, neo4j_client):
-        await setup_indexes(neo4j_session)
-        await neo4j_client.drop_indexes()
+        async def test_does_nothing_if_no_constraints_defined(self, neo4j_session, neo4j_client):
+            with patch("pyneo4j_ogm.clients.neo4j.Neo4jClient.cypher", wraps=neo4j_client.cypher) as cypher_spy:
+                await neo4j_client.drop_constraints()
 
-        await check_no_indexes(neo4j_session)
+                cypher_spy.assert_called_once()
 
-    async def test_drop_indexes_is_chainable(self, neo4j_session, neo4j_client):
-        return_value = await neo4j_client.drop_indexes()
-        assert neo4j_client == return_value
-
-    async def test_does_nothing_if_no_indexes_defined(self, neo4j_session, neo4j_client):
-        with patch("pyneo4j_ogm.clients.neo4j.Neo4jClient.cypher", wraps=neo4j_client.cypher) as cypher_spy:
+        async def test_drop_indexes(self, neo4j_session, neo4j_client):
+            await setup_indexes(neo4j_session)
             await neo4j_client.drop_indexes()
 
-            cypher_spy.assert_called_once()
+            await check_no_indexes(neo4j_session)
 
-    async def test_drop_nodes(self, neo4j_client, neo4j_session):
-        await neo4j_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
-        query = await neo4j_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
-        assert len(result) == 4
+        async def test_does_nothing_if_no_indexes_defined(self, neo4j_session, neo4j_client):
+            with patch("pyneo4j_ogm.clients.neo4j.Neo4jClient.cypher", wraps=neo4j_client.cypher) as cypher_spy:
+                await neo4j_client.drop_indexes()
 
-        await neo4j_client.drop_nodes()
+                cypher_spy.assert_called_once()
 
-        query = await neo4j_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
-        assert len(result) == 0
+        async def test_drop_nodes(self, neo4j_client, neo4j_session):
+            query = await neo4j_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
+            await query.consume()
+            query = await neo4j_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
+            assert len(result) == 4
 
-    async def test_batching(self, neo4j_client, neo4j_session):
-        async with neo4j_client.batching():
-            await neo4j_client.cypher("CREATE (:Developer)")
-            await neo4j_client.cypher("CREATE (:Coffee)")
-            await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+            await neo4j_client.drop_nodes()
 
             query = await neo4j_session.run("MATCH (n) RETURN n")
             result = await query.values()
             await query.consume()
             assert len(result) == 0
 
-        query = await neo4j_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
-        assert len(result) == 2
+    class TestNeo4jBatching:
+        async def test_batching(self, neo4j_client, neo4j_session):
+            async with neo4j_client.batching():
+                await neo4j_client.cypher("CREATE (:Developer)")
+                await neo4j_client.cypher("CREATE (:Coffee)")
+                await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-    async def test_batching_query(self, neo4j_client, neo4j_session):
-        await neo4j_session.run("CREATE (:Developer)")
-        await neo4j_session.run("CREATE (:Coffee)")
+                query = await neo4j_session.run("MATCH (n) RETURN n")
+                result = await query.values()
+                await query.consume()
+                assert len(result) == 0
 
-        async with neo4j_client.batching():
-            results, _ = await neo4j_client.cypher("MATCH (n) RETURN n")
-            assert len(results) == 2
+            query = await neo4j_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
+            assert len(result) == 2
 
-            for result in results:
-                assert isinstance(result[0], neo4j.graph.Node)
+        async def test_batching_query(self, neo4j_client, neo4j_session):
+            query = await neo4j_session.run("CREATE (:Developer)")
+            await query.consume()
+            query = await neo4j_session.run("CREATE (:Coffee)")
+            await query.consume()
 
-    async def test_batching_rolls_back_on_error(self, neo4j_client):
-        with patch.object(neo4j.AsyncTransaction, "rollback", new=AsyncMock()) as mock_rollback:
-            try:
+            async with neo4j_client.batching():
+                results, _ = await neo4j_client.cypher("MATCH (n) RETURN n", resolve_models=False)
+                assert len(results) == 2
+
+                for result in results:
+                    assert isinstance(result[0], neo4j.graph.Node)
+
+        async def test_batching_rolls_back_on_error(self, neo4j_client):
+            with patch.object(neo4j.AsyncTransaction, "rollback", new=AsyncMock()) as mock_rollback:
+                try:
+                    async with neo4j_client.batching():
+                        raise Exception()
+                except Exception:
+                    pass
+
+                mock_rollback.assert_awaited_once()
+
+        async def test_batching_using_same_transaction(self, neo4j_client):
+            neo4j_client._driver.session = MagicMock(wraps=neo4j_client._driver.session)
+
+            async with neo4j_client.batching():
+                await neo4j_client.cypher("CREATE (:Developer)")
+                await neo4j_client.cypher("CREATE (:Coffee)")
+                await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
+            assert neo4j_client._driver.session.call_count == 1
+
+        async def test_batching_raises_on_shared_session_missing_when_committing(self, neo4j_client):
+            with pytest.raises(NoTransactionInProgressError):
                 async with neo4j_client.batching():
-                    raise Exception()
-            except Exception:
-                pass
+                    await neo4j_client.cypher("CREATE (:Developer)")
+                    await neo4j_client.cypher("CREATE (:Coffee)")
+                    await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-            mock_rollback.assert_awaited_once()
+                    neo4j_client._session = None
 
-    async def test_batching_using_same_transaction(self, neo4j_client):
-        neo4j_client._driver.session = MagicMock(wraps=neo4j_client._driver.session)
+        async def test_batching_raises_on_shared_transaction_missing_when_committing(self, neo4j_client):
+            with pytest.raises(NoTransactionInProgressError):
+                async with neo4j_client.batching():
+                    await neo4j_client.cypher("CREATE (:Developer)")
+                    await neo4j_client.cypher("CREATE (:Coffee)")
+                    await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-        async with neo4j_client.batching():
-            await neo4j_client.cypher("CREATE (:Developer)")
-            await neo4j_client.cypher("CREATE (:Coffee)")
-            await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+                    neo4j_client._transaction = None
 
-        assert neo4j_client._driver.session.call_count == 1
+        async def test_batching_raises_on_shared_session_missing_when_rolling_back(self, neo4j_client):
+            with patch("time.perf_counter", side_effect=RuntimeError("perf_counter failed")):
+                with pytest.raises(NoTransactionInProgressError):
+                    async with neo4j_client.batching():
+                        neo4j_client._session = None
 
-    async def test_cypher(self, neo4j_client, neo4j_session):
-        labels = ["Developer", "Coffee"]
-        result, keys = await neo4j_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})")
+                        await neo4j_client.cypher("CREATE (:Developer)")
+                        await neo4j_client.cypher("CREATE (:Coffee)")
+                        await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-        assert len(result) == 0
-        assert len(keys) == 0
+        async def test_batching_raises_on_shared_transaction_missing_when_rolling_back(self, neo4j_client):
+            with patch("time.perf_counter", side_effect=RuntimeError("perf_counter failed")):
+                with pytest.raises(NoTransactionInProgressError):
+                    async with neo4j_client.batching():
+                        neo4j_client._transaction = None
 
-        query = await neo4j_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
+                        await neo4j_client.cypher("CREATE (:Developer)")
+                        await neo4j_client.cypher("CREATE (:Coffee)")
+                        await neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-        assert len(result) == 2
-        assert len(result[0][0].labels) == 1
-        assert len(result[0][0].labels) == 1
-        assert list(result[1][0].labels)[0] in labels
-        assert list(result[1][0].labels)[0] in labels
+    class TestNeo4jCypherQueries:
+        async def test_cypher(self, neo4j_client, neo4j_session):
+            labels = ["Developer", "Coffee"]
+            result, keys = await neo4j_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})")
 
-    async def test_cypher_uses_unique_transaction(self, neo4j_client):
-        neo4j_client._driver.session = MagicMock(wraps=neo4j_client._driver.session)
+            assert len(result) == 0
+            assert len(keys) == 0
 
-        coroutine_one = neo4j_client.cypher("CREATE (:Developer)")
-        coroutine_two = neo4j_client.cypher("CREATE (:Coffee)")
-        coroutine_three = neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+            query = await neo4j_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
 
-        await asyncio.gather(coroutine_one, coroutine_two, coroutine_three)
+            assert len(result) == 2
+            assert len(result[0][0].labels) == 1
+            assert len(result[0][0].labels) == 1
+            assert list(result[1][0].labels)[0] in labels
+            assert list(result[1][0].labels)[0] in labels
 
-        assert neo4j_client._driver.session.call_count == 3
+        async def test_cypher_uses_unique_transaction(self, neo4j_client):
+            neo4j_client._driver.session = MagicMock(wraps=neo4j_client._driver.session)
 
-    async def test_cypher_with_params(self, neo4j_client, neo4j_session):
-        result, keys = await neo4j_client.cypher("CREATE (n:Person) SET n.age = $age", {"age": 24})
+            coroutine_one = neo4j_client.cypher("CREATE (:Developer)")
+            coroutine_two = neo4j_client.cypher("CREATE (:Coffee)")
+            coroutine_three = neo4j_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-        assert len(result) == 0
-        assert len(keys) == 0
+            await asyncio.gather(coroutine_one, coroutine_two, coroutine_three)
 
-        query = await neo4j_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
+            assert neo4j_client._driver.session.call_count == 3
 
-        assert len(result) == 1
-        assert len(result[0][0].labels) == 1
-        assert list(result[0][0].labels)[0] == "Person"
-        assert dict(result[0][0])["age"] == 24
+        async def test_cypher_with_params(self, neo4j_client, neo4j_session):
+            result, keys = await neo4j_client.cypher("CREATE (n:Person) SET n.age = $age", {"age": 24})
 
-    async def test_cypher_auto_committing(self, neo4j_client, neo4j_session):
-        labels = ["Developer", "Coffee"]
-        result, keys = await neo4j_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})", auto_committing=True)
+            assert len(result) == 0
+            assert len(keys) == 0
 
-        assert len(result) == 0
-        assert len(keys) == 0
+            query = await neo4j_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
 
-        query = await neo4j_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
+            assert len(result) == 1
+            assert len(result[0][0].labels) == 1
+            assert list(result[0][0].labels)[0] == "Person"
+            assert dict(result[0][0])["age"] == 24
 
-        assert len(result) == 2
-        assert len(result[0][0].labels) == 1
-        assert len(result[0][0].labels) == 1
-        assert list(result[1][0].labels)[0] in labels
-        assert list(result[1][0].labels)[0] in labels
+        async def test_cypher_auto_committing(self, neo4j_client, neo4j_session):
+            labels = ["Developer", "Coffee"]
+            result, keys = await neo4j_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})", auto_committing=True)
 
-    async def test_cypher_with_params_auto_committing(self, neo4j_client, neo4j_session):
-        result, keys = await neo4j_client.cypher(
-            "CREATE (n:Person) SET n.age = $age", {"age": 24}, auto_committing=True
-        )
+            assert len(result) == 0
+            assert len(keys) == 0
 
-        assert len(result) == 0
-        assert len(keys) == 0
+            query = await neo4j_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
 
-        query = await neo4j_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
+            assert len(result) == 2
+            assert len(result[0][0].labels) == 1
+            assert len(result[0][0].labels) == 1
+            assert list(result[1][0].labels)[0] in labels
+            assert list(result[1][0].labels)[0] in labels
 
-        assert len(result) == 1
-        assert len(result[0][0].labels) == 1
-        assert list(result[0][0].labels)[0] == "Person"
-        assert dict(result[0][0])["age"] == 24
+        async def test_cypher_with_params_auto_committing(self, neo4j_client, neo4j_session):
+            result, keys = await neo4j_client.cypher(
+                "CREATE (n:Person) SET n.age = $age", {"age": 24}, auto_committing=True
+            )
+
+            assert len(result) == 0
+            assert len(keys) == 0
+
+            query = await neo4j_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 1
+            assert len(result[0][0].labels) == 1
+            assert list(result[0][0].labels)[0] == "Person"
+            assert dict(result[0][0])["age"] == 24
+
+    class TestNeo4jResolvingModels:
+        async def test_resolves_model_correctly(self, neo4j_client, neo4j_session):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person, Related)
+            results, _ = await neo4j_client.cypher("MATCH (n)-[r]->(m) RETURN n, m, r")
+
+            assert len(results[0]) == 3
+
+            assert isinstance(results[0][0], Person)
+            assert results[0][0].id is not None
+            assert results[0][0].element_id is not None
+            assert results[0][0].name == person_one["name"]
+            assert results[0][0].age == person_one["age"]
+            assert results[0][0].is_happy == person_one["is_happy"]
+
+            assert isinstance(results[0][1], Person)
+            assert results[0][1].id is not None
+            assert results[0][1].element_id is not None
+            assert results[0][1].name == person_two["name"]
+            assert results[0][1].age == person_two["age"]
+            assert results[0][1].is_happy == person_two["is_happy"]
+
+            assert isinstance(results[0][2], Related)
+            assert results[0][2].id is not None
+            assert results[0][2].element_id is not None
+            assert results[0][2].days_since == related["days_since"]
+            assert results[0][2].close_friend == related["close_friend"]
+
+        async def test_raises_on_unknown_node_model(self, neo4j_client, neo4j_session):
+            query = await neo4j_session.run("CREATE (:Node)")
+            await query.consume()
+
+            with pytest.raises(ModelResolveError):
+                await neo4j_client.cypher("MATCH (n) RETURN n")
+
+        async def test_raises_on_unknown_relationship_model(self, neo4j_client, neo4j_session):
+            query = await neo4j_session.run("CREATE (:Node)-[:RELATION]->(:Node)")
+            await query.consume()
+
+            with pytest.raises(ModelResolveError):
+                await neo4j_client.cypher("MATCH ()-[r]->() RETURN r")
+
+        async def test_resolves_paths_correctly(self, neo4j_client, neo4j_session):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person, Related)
+            results, _ = await neo4j_client.cypher("MATCH path=(n)-[r]->(m) RETURN path")
+
+            assert len(results[0]) == 1
+            assert isinstance(results[0][0], PathContainer)
+            assert all(isinstance(node, Person) for node in results[0][0].nodes)
+            assert all(isinstance(relationship, Related) for relationship in results[0][0].relationships)
+
+        async def test_resolves_relationship_start_and_end_nodes_correctly(self, neo4j_client, neo4j_session):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person, Related)
+            results, _ = await neo4j_client.cypher("MATCH (n)-[r]->(m) RETURN r, n, m")
+
+            assert isinstance(results[0][0], RelationshipModel)
+            assert isinstance(results[0][0].start_node, Person)
+            assert results[0][0].start_node.element_id == results[0][1].element_id
+            assert isinstance(results[0][0].end_node, Person)
+            assert results[0][0].end_node.element_id == results[0][2].element_id
+
+        async def test_does_not_resolve_start_and_end_node_if_not_returned_from_query(
+            self, neo4j_client, neo4j_session
+        ):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await neo4j_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person, Related)
+            results, _ = await neo4j_client.cypher("MATCH ()-[r]->() RETURN r")
+
+            assert isinstance(results[0][0], RelationshipModel)
+            assert results[0][0].start_node is None
+            assert results[0][0].end_node is None
+
+        async def test_resolves_nested_properties(self, neo4j_client, neo4j_session):
+            class DeeplyNested(BaseModel):
+                nested_count: int
+
+            class Nested(BaseModel):
+                is_nested: bool
+                deeply_nested_items: List[DeeplyNested]
+                deeply_nested_once: DeeplyNested
+
+            class Person(NodeModel):
+                nested: Nested
+                id_: int
+
+            query = await neo4j_session.run(
+                "CREATE (n:Person {id_: $id, nested: $nested})",
+                {
+                    "id": 1,
+                    "nested": json.dumps(
+                        {
+                            "is_nested": True,
+                            "deeply_nested_once": {"nested_count": 1},
+                            "deeply_nested_items": [
+                                {"nested_count": 2},
+                                {"nested_count": 4},
+                            ],
+                        }
+                    ),
+                },
+            )
+            await query.consume()
+
+            await neo4j_client.register_models(Person)
+            results, _ = await neo4j_client.cypher("MATCH (n:Person) RETURN n")
+
+            assert len(results[0]) == 1
+            assert isinstance(results[0][0], Person)
+            assert results[0][0].id_ == 1
+            assert results[0][0].nested.is_nested
+            assert results[0][0].nested.deeply_nested_once.nested_count == 1
+            assert len(results[0][0].nested.deeply_nested_items) == 2
+            assert results[0][0].nested.deeply_nested_items[0].nested_count == 2
+            assert results[0][0].nested.deeply_nested_items[1].nested_count == 4
+
+        async def test_raises_if_nested_properties_disallowed_but_encountered(self, neo4j_session):
+            class Nested(BaseModel):
+                is_nested: bool
+
+            class Person(NodeModel):
+                nested: Nested
+                id_: int
+
+            query = await neo4j_session.run(
+                "CREATE (n:Person {id_: $id, nested: $nested})",
+                {
+                    "id": 1,
+                    "nested": json.dumps(
+                        {
+                            "is_nested": True,
+                        }
+                    ),
+                },
+            )
+            await query.consume()
+
+            neo4j_client = Neo4jClient()
+            await neo4j_client.connect(
+                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, allow_nested_properties=False
+            )
+            await neo4j_client.register_models(Person)
+
+            with pytest.raises(InflationError):
+                await neo4j_client.cypher("MATCH (n:Person) RETURN n")
+
+        async def test_raises_if_nested_properties_malformed(self, neo4j_session):
+            class Nested(BaseModel):
+                is_nested: bool
+
+            class Person(NodeModel):
+                nested: Nested
+                id_: int
+
+            query = await neo4j_session.run(
+                "CREATE (n:Person {id_: $id, nested: $nested})",
+                {
+                    "id": 1,
+                    "nested": '{"is_nested: true}',
+                },
+            )
+            await query.consume()
+
+            neo4j_client = Neo4jClient()
+            await neo4j_client.connect(
+                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, allow_nested_properties=False
+            )
+            await neo4j_client.register_models(Person)
+
+            with pytest.raises(InflationError):
+                await neo4j_client.cypher("MATCH (n:Person) RETURN n")
 
 
 class TestNeo4jModelInitialization:
@@ -761,7 +1050,8 @@ class TestNeo4jModelInitialization:
         class Likes(RelationshipModel):
             uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
 
-        client = await Neo4jClient().connect(
+        client = Neo4jClient()
+        await client.connect(
             ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_constraints=True, skip_indexes=True
         )
         await client.register_models(Person, Likes)
@@ -789,7 +1079,8 @@ class TestNeo4jModelInitialization:
 
             ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
 
-        client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+        client = Neo4jClient()
+        await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
         await client.register_models(Person, Likes)
 
         query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -812,9 +1103,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, UniquenessConstraint()]
 
-            client = await Neo4jClient().connect(
-                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_constraints=True
-            )
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_constraints=True)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -834,7 +1124,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -850,7 +1141,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, UniquenessConstraint()]
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -875,7 +1167,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -895,7 +1188,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -915,7 +1209,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -932,7 +1227,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -958,7 +1254,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -986,7 +1283,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1003,7 +1301,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -1025,9 +1324,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, RangeIndex()]
 
-            client = await Neo4jClient().connect(
-                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
-            )
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1047,7 +1345,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"skip_index_creation": True}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1063,7 +1362,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, RangeIndex()]
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1088,7 +1388,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1108,7 +1409,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1128,7 +1430,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1145,7 +1448,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1171,7 +1475,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1197,7 +1502,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1214,7 +1520,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1237,9 +1544,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, TextIndex()]
 
-            client = await Neo4jClient().connect(
-                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
-            )
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1259,7 +1565,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"skip_index_creation": True}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1275,7 +1582,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, TextIndex()]
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1300,7 +1608,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1320,7 +1629,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1340,7 +1650,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1357,7 +1668,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1383,7 +1695,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1410,9 +1723,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, VectorIndex()]
 
-            client = await Neo4jClient().connect(
-                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
-            )
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1432,7 +1744,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"skip_index_creation": True}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1448,7 +1761,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, VectorIndex()]
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1473,7 +1787,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1493,7 +1808,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1513,7 +1829,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1530,7 +1847,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1556,7 +1874,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1583,9 +1902,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, PointIndex()]
 
-            client = await Neo4jClient().connect(
-                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
-            )
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1605,7 +1923,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"skip_index_creation": True}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1621,7 +1940,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, PointIndex()]
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1646,7 +1966,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1666,7 +1987,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1686,7 +2008,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1703,7 +2026,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1729,7 +2053,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1756,9 +2081,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, FullTextIndex()]
 
-            client = await Neo4jClient().connect(
-                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True
-            )
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, skip_indexes=True)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -1778,7 +2102,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW CONSTRAINT")
@@ -1794,7 +2119,8 @@ class TestNeo4jModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, FullTextIndex()]
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person, Likes)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1819,7 +2145,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1839,7 +2166,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1859,7 +2187,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1879,7 +2208,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1896,7 +2226,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1922,7 +2253,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")
@@ -1948,7 +2280,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1965,7 +2298,8 @@ class TestNeo4jModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await Neo4jClient().connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
+            client = Neo4jClient()
+            await client.connect(ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value)
             await client.register_models(Person)
 
             query = await neo4j_session.run("SHOW INDEXES")

@@ -1,22 +1,27 @@
-# pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument, broad-exception-raised
+# pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument, broad-exception-raised, line-too-long
 
 import asyncio
+from datetime import date
 from os import path
+from typing import Any, Dict, List, Union
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import neo4j
 import neo4j.graph
 import pytest
 from neo4j.exceptions import ClientError
+from pydantic import BaseModel
 from typing_extensions import Annotated
 
 from pyneo4j_ogm.clients.memgraph import MemgraphClient
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
     DuplicateModelError,
+    ModelResolveError,
     NoTransactionInProgressError,
 )
 from pyneo4j_ogm.models.node import NodeModel
+from pyneo4j_ogm.models.path import PathContainer
 from pyneo4j_ogm.models.relationship import RelationshipModel
 from pyneo4j_ogm.options.field_options import (
     DataTypeConstraint,
@@ -33,18 +38,18 @@ from tests.fixtures.db import (
     memgraph_client,
     memgraph_session,
 )
-from tests.model_imports.valid.nested.nested import (
-    NestedNodeModel,
-    NestedRelationshipModel,
-)
-from tests.model_imports.valid.top import TopNodeModel, TopRelationshipModel
+from tests.fixtures.registry import reset_registry_state
 
 
 async def setup_constraints(session: neo4j.AsyncSession):
-    await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.id IS UNIQUE")
-    await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.name, n.address IS UNIQUE")
-    await session.run("CREATE CONSTRAINT ON (n:label) ASSERT EXISTS (n.property)")
-    await session.run("CREATE CONSTRAINT ON (n:label) ASSERT n.property IS TYPED STRING")
+    query = await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.id IS UNIQUE")
+    await query.consume()
+    query = await session.run("CREATE CONSTRAINT ON (n:Employee) ASSERT n.name, n.address IS UNIQUE")
+    await query.consume()
+    query = await session.run("CREATE CONSTRAINT ON (n:label) ASSERT EXISTS (n.property)")
+    await query.consume()
+    query = await session.run("CREATE CONSTRAINT ON (n:label) ASSERT n.property IS TYPED STRING")
+    await query.consume()
 
     query = await session.run("SHOW CONSTRAINT INFO")
     constraints = await query.values()
@@ -60,11 +65,16 @@ async def check_no_constraints(session: neo4j.AsyncSession):
 
 
 async def setup_indexes(session: neo4j.AsyncSession):
-    await session.run("CREATE INDEX ON :Person")
-    await session.run("CREATE INDEX ON :Person(age)")
-    await session.run("CREATE EDGE INDEX ON :EDGE_TYPE")
-    await session.run("CREATE EDGE INDEX ON :EDGE_TYPE(property_name)")
-    await session.run("CREATE POINT INDEX ON :Label(property)")
+    query = await session.run("CREATE INDEX ON :Person")
+    await query.consume()
+    query = await session.run("CREATE INDEX ON :Person(age)")
+    await query.consume()
+    query = await session.run("CREATE EDGE INDEX ON :EDGE_TYPE")
+    await query.consume()
+    query = await session.run("CREATE EDGE INDEX ON :EDGE_TYPE(property_name)")
+    await query.consume()
+    query = await session.run("CREATE POINT INDEX ON :Label(property)")
+    await query.consume()
 
     query = await session.run("SHOW INDEX INFO")
     constraints = await query.values()
@@ -83,11 +93,6 @@ class TestMemgraphConnection:
     async def test_successful_connect(self):
         client = MemgraphClient()
         await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
-
-    async def test_connect_is_chainable(self):
-        client = MemgraphClient()
-        return_value = await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
-        assert client == return_value
 
     async def test_checks_connectivity_and_auth(self):
         async_driver_mock = AsyncMock(spec=neo4j.AsyncDriver)
@@ -109,13 +114,6 @@ class TestMemgraphConnection:
         with pytest.raises(ClientError):
             client = MemgraphClient()
             await client.connect(ConnectionString.MEMGRAPH.value)
-
-    async def test_is_chainable(self):
-        client = MemgraphClient()
-        chainable = await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
-
-        assert isinstance(chainable, MemgraphClient)
-        assert chainable == client
 
     async def test_connected_state(self):
         client = MemgraphClient()
@@ -161,11 +159,6 @@ class TestMemgraphConnection:
 
 class TestMemgraphConstraints:
     class TestMemgraphExistenceConstraint:
-        async def test_existence_constraint_is_chainable(self, memgraph_session, memgraph_client):
-            await check_no_constraints(memgraph_session)
-            return_value = await memgraph_client.existence_constraint("Person", "id")
-            assert memgraph_client == return_value
-
         async def test_existence_constraint(self, memgraph_session, memgraph_client):
             await check_no_constraints(memgraph_session)
             await memgraph_client.existence_constraint("Person", "id")
@@ -180,11 +173,6 @@ class TestMemgraphConstraints:
             assert constraints[0][2] == "id"
 
     class TestMemgraphUniquenessConstraint:
-        async def test_uniqueness_constraint_is_chainable(self, memgraph_session, memgraph_client):
-            await check_no_constraints(memgraph_session)
-            return_value = await memgraph_client.uniqueness_constraint("Person", "id")
-            assert memgraph_client == return_value
-
         async def test_uniqueness_constraint(self, memgraph_session, memgraph_client):
             await check_no_constraints(memgraph_session)
             await memgraph_client.uniqueness_constraint("Person", "id")
@@ -219,11 +207,6 @@ class TestMemgraphConstraints:
             with patch.object(memgraph_client, "cypher", patched_cypher_fn):
                 with pytest.raises(Exception):
                     await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
-
-        async def test_data_type_constraint_is_chainable(self, memgraph_session, memgraph_client):
-            await check_no_constraints(memgraph_session)
-            return_value = await memgraph_client.data_type_constraint("Person", "id", MemgraphDataType.BOOLEAN)
-            assert memgraph_client == return_value
 
         async def test_data_type_constraint_does_not_throw_on_duplicate(self, memgraph_session, memgraph_client):
             await check_no_constraints(memgraph_session)
@@ -583,11 +566,6 @@ class TestMemgraphConstraints:
 
 class TestMemgraphIndexes:
     class TestMemgraphEntityIndex:
-        async def test_index_is_chainable(self, memgraph_session, memgraph_client):
-            await check_no_indexes(memgraph_session)
-            return_value = await memgraph_client.entity_index("Person", EntityType.NODE)
-            assert memgraph_client == return_value
-
         async def test_node_index(self, memgraph_session, memgraph_client):
             await check_no_indexes(memgraph_session)
             await memgraph_client.entity_index("Person", EntityType.NODE)
@@ -615,11 +593,6 @@ class TestMemgraphIndexes:
             assert constraints[0][2] is None
 
     class TestMemgraphPropertyIndex:
-        async def test_property_index_is_chainable(self, memgraph_session, memgraph_client):
-            await check_no_indexes(memgraph_session)
-            return_value = await memgraph_client.property_index(EntityType.NODE, "Person", "age")
-            assert memgraph_client == return_value
-
         async def test_node_property_index(self, memgraph_session, memgraph_client):
             await check_no_indexes(memgraph_session)
             await memgraph_client.property_index(EntityType.NODE, "Person", "age")
@@ -660,224 +633,468 @@ class TestMemgraphIndexes:
             assert constraints[0][1] == "Person"
             assert constraints[0][2] == "age"
 
-        async def test_point_index_is_chainable(self, memgraph_session, memgraph_client):
-            await check_no_indexes(memgraph_session)
-            return_value = await memgraph_client.point_index("Person", "age")
-            assert memgraph_client == return_value
-
 
 class TestMemgraphQueries:
-    async def test_drop_constraints(self, memgraph_session, memgraph_client):
-        await setup_constraints(memgraph_session)
-        await memgraph_client.drop_constraints()
-
-        await check_no_constraints(memgraph_session)
-
-    async def test_drop_constraints_is_chainable(self, memgraph_session, memgraph_client):
-        return_value = await memgraph_client.drop_constraints()
-        assert memgraph_client == return_value
-
-    async def test_does_nothing_if_no_constraints_defined(self, memgraph_session, memgraph_client):
-        await check_no_constraints(memgraph_session)
-
-        with patch("pyneo4j_ogm.clients.memgraph.MemgraphClient.cypher", wraps=memgraph_client.cypher) as cypher_spy:
+    class TestMemgraphUtilities:
+        async def test_drop_constraints(self, memgraph_session, memgraph_client):
+            await setup_constraints(memgraph_session)
             await memgraph_client.drop_constraints()
 
-            cypher_spy.assert_called_once()
+            await check_no_constraints(memgraph_session)
 
-    async def test_drop_indexes(self, memgraph_session, memgraph_client):
-        await setup_indexes(memgraph_session)
-        await memgraph_client.drop_indexes()
+        async def test_does_nothing_if_no_constraints_defined(self, memgraph_session, memgraph_client):
+            await check_no_constraints(memgraph_session)
 
-        await check_no_indexes(memgraph_session)
+            with patch(
+                "pyneo4j_ogm.clients.memgraph.MemgraphClient.cypher", wraps=memgraph_client.cypher
+            ) as cypher_spy:
+                await memgraph_client.drop_constraints()
 
-    async def test_drop_indexes_is_chainable(self, memgraph_session, memgraph_client):
-        return_value = await memgraph_client.drop_indexes()
-        assert memgraph_client == return_value
+                cypher_spy.assert_called_once()
 
-    async def test_does_nothing_if_no_index_defined(self, memgraph_session, memgraph_client):
-        await check_no_indexes(memgraph_session)
-
-        with patch("pyneo4j_ogm.clients.memgraph.MemgraphClient.cypher", wraps=memgraph_client.cypher) as cypher_spy:
+        async def test_drop_indexes(self, memgraph_session, memgraph_client):
+            await setup_indexes(memgraph_session)
             await memgraph_client.drop_indexes()
 
-            cypher_spy.assert_called_once()
+            await check_no_indexes(memgraph_session)
 
-    async def test_drop_nodes(self, memgraph_client, memgraph_session):
-        await memgraph_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
-        query = await memgraph_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
-        assert len(result) == 4
+        async def test_does_nothing_if_no_index_defined(self, memgraph_session, memgraph_client):
+            await check_no_indexes(memgraph_session)
 
-        await memgraph_client.drop_nodes()
+            with patch(
+                "pyneo4j_ogm.clients.memgraph.MemgraphClient.cypher", wraps=memgraph_client.cypher
+            ) as cypher_spy:
+                await memgraph_client.drop_indexes()
 
-        query = await memgraph_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
-        assert len(result) == 0
+                cypher_spy.assert_called_once()
 
-    async def test_batching(self, memgraph_client, memgraph_session):
-        async with memgraph_client.batching():
-            await memgraph_client.cypher("CREATE (:Developer)")
-            await memgraph_client.cypher("CREATE (:Coffee)")
-            await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+        async def test_drop_nodes(self, memgraph_client, memgraph_session):
+            query = await memgraph_session.run("CREATE (:Person), (:Worker), (:People)-[:LOVES]->(:Coffee)")
+            await query.consume()
+            query = await memgraph_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
+            assert len(result) == 4
+
+            await memgraph_client.drop_nodes()
 
             query = await memgraph_session.run("MATCH (n) RETURN n")
             result = await query.values()
             await query.consume()
             assert len(result) == 0
 
-        query = await memgraph_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
-        assert len(result) == 2
-
-    async def test_batching_query(self, memgraph_client, memgraph_session):
-        await memgraph_session.run("CREATE (:Developer)")
-        await memgraph_session.run("CREATE (:Coffee)")
-
-        async with memgraph_client.batching():
-            results, _ = await memgraph_client.cypher("MATCH (n) RETURN n")
-            assert len(results) == 2
-
-            for result in results:
-                assert isinstance(result[0], neo4j.graph.Node)
-
-    async def test_batching_rolls_back_on_error(self, memgraph_client):
-        with patch.object(neo4j.AsyncTransaction, "rollback", new=AsyncMock()) as mock_rollback:
-            try:
-                async with memgraph_client.batching():
-                    raise Exception()
-            except Exception:
-                pass
-
-            mock_rollback.assert_awaited_once()
-
-    async def test_batching_using_same_transaction(self, memgraph_client):
-        memgraph_client._driver.session = MagicMock(wraps=memgraph_client._driver.session)
-
-        async with memgraph_client.batching():
-            await memgraph_client.cypher("CREATE (:Developer)")
-            await memgraph_client.cypher("CREATE (:Coffee)")
-            await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
-
-        assert memgraph_client._driver.session.call_count == 1
-
-    async def test_batching_raises_on_shared_session_missing_when_committing(self, memgraph_client):
-        with pytest.raises(NoTransactionInProgressError):
+    class TestMemgraphBatching:
+        async def test_batching(self, memgraph_client, memgraph_session):
             async with memgraph_client.batching():
                 await memgraph_client.cypher("CREATE (:Developer)")
                 await memgraph_client.cypher("CREATE (:Coffee)")
                 await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-                memgraph_client._session = None
+                query = await memgraph_session.run("MATCH (n) RETURN n")
+                result = await query.values()
+                await query.consume()
+                assert len(result) == 0
 
-    async def test_batching_raises_on_shared_transaction_missing_when_committing(self, memgraph_client):
-        with pytest.raises(NoTransactionInProgressError):
+            query = await memgraph_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
+            assert len(result) == 2
+
+        async def test_batching_query(self, memgraph_client, memgraph_session):
+            query = await memgraph_session.run("CREATE (:Developer)")
+            await query.consume()
+            query = await memgraph_session.run("CREATE (:Coffee)")
+            await query.consume()
+
+            async with memgraph_client.batching():
+                results, _ = await memgraph_client.cypher("MATCH (n) RETURN n", resolve_models=False)
+                assert len(results) == 2
+
+                for result in results:
+                    assert isinstance(result[0], neo4j.graph.Node)
+
+        async def test_batching_rolls_back_on_error(self, memgraph_client):
+            with patch.object(neo4j.AsyncTransaction, "rollback", new=AsyncMock()) as mock_rollback:
+                try:
+                    async with memgraph_client.batching():
+                        raise Exception()
+                except Exception:
+                    pass
+
+                mock_rollback.assert_awaited_once()
+
+        async def test_batching_using_same_transaction(self, memgraph_client):
+            memgraph_client._driver.session = MagicMock(wraps=memgraph_client._driver.session)
+
             async with memgraph_client.batching():
                 await memgraph_client.cypher("CREATE (:Developer)")
                 await memgraph_client.cypher("CREATE (:Coffee)")
                 await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-                memgraph_client._transaction = None
+            assert memgraph_client._driver.session.call_count == 1
 
-    async def test_batching_raises_on_shared_session_missing_when_rolling_back(self, memgraph_client):
-        with patch("time.perf_counter", side_effect=RuntimeError("perf_counter failed")):
+        async def test_batching_raises_on_shared_session_missing_when_committing(self, memgraph_client):
             with pytest.raises(NoTransactionInProgressError):
                 async with memgraph_client.batching():
+                    await memgraph_client.cypher("CREATE (:Developer)")
+                    await memgraph_client.cypher("CREATE (:Coffee)")
+                    await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+
                     memgraph_client._session = None
 
-                    await memgraph_client.cypher("CREATE (:Developer)")
-                    await memgraph_client.cypher("CREATE (:Coffee)")
-                    await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
-
-    async def test_batching_raises_on_shared_transaction_missing_when_rolling_back(self, memgraph_client):
-        with patch("time.perf_counter", side_effect=RuntimeError("perf_counter failed")):
+        async def test_batching_raises_on_shared_transaction_missing_when_committing(self, memgraph_client):
             with pytest.raises(NoTransactionInProgressError):
                 async with memgraph_client.batching():
-                    memgraph_client._transaction = None
-
                     await memgraph_client.cypher("CREATE (:Developer)")
                     await memgraph_client.cypher("CREATE (:Coffee)")
                     await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-    async def test_cypher(self, memgraph_client, memgraph_session):
-        labels = ["Developer", "Coffee"]
-        result, keys = await memgraph_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})")
+                    memgraph_client._transaction = None
 
-        assert len(result) == 0
-        assert len(keys) == 0
+        async def test_batching_raises_on_shared_session_missing_when_rolling_back(self, memgraph_client):
+            with patch("time.perf_counter", side_effect=RuntimeError("perf_counter failed")):
+                with pytest.raises(NoTransactionInProgressError):
+                    async with memgraph_client.batching():
+                        memgraph_client._session = None
 
-        query = await memgraph_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
+                        await memgraph_client.cypher("CREATE (:Developer)")
+                        await memgraph_client.cypher("CREATE (:Coffee)")
+                        await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-        assert len(result) == 2
-        assert len(result[0][0].labels) == 1
-        assert len(result[0][0].labels) == 1
-        assert list(result[1][0].labels)[0] in labels
-        assert list(result[1][0].labels)[0] in labels
+        async def test_batching_raises_on_shared_transaction_missing_when_rolling_back(self, memgraph_client):
+            with patch("time.perf_counter", side_effect=RuntimeError("perf_counter failed")):
+                with pytest.raises(NoTransactionInProgressError):
+                    async with memgraph_client.batching():
+                        memgraph_client._transaction = None
 
-    async def test_cypher_uses_unique_transaction(self, memgraph_client):
-        memgraph_client._driver.session = MagicMock(wraps=memgraph_client._driver.session)
+                        await memgraph_client.cypher("CREATE (:Developer)")
+                        await memgraph_client.cypher("CREATE (:Coffee)")
+                        await memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-        coroutine_one = memgraph_client.cypher("CREATE (:Developer)")
-        coroutine_two = memgraph_client.cypher("CREATE (:Coffee)")
-        coroutine_three = memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
+    class TestMemgraphCypherQueries:
+        async def test_cypher(self, memgraph_client, memgraph_session):
+            labels = ["Developer", "Coffee"]
+            result, keys = await memgraph_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})")
 
-        await asyncio.gather(coroutine_one, coroutine_two, coroutine_three)
+            assert len(result) == 0
+            assert len(keys) == 0
 
-        assert memgraph_client._driver.session.call_count == 3
+            query = await memgraph_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
 
-    async def test_cypher_with_params(self, memgraph_client, memgraph_session):
-        result, keys = await memgraph_client.cypher("CREATE (n:Person) SET n.age = $age", {"age": 24})
+            assert len(result) == 2
+            assert len(result[0][0].labels) == 1
+            assert len(result[0][0].labels) == 1
+            assert list(result[1][0].labels)[0] in labels
+            assert list(result[1][0].labels)[0] in labels
 
-        assert len(result) == 0
-        assert len(keys) == 0
+        async def test_cypher_uses_unique_transaction(self, memgraph_client):
+            memgraph_client._driver.session = MagicMock(wraps=memgraph_client._driver.session)
 
-        query = await memgraph_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
+            coroutine_one = memgraph_client.cypher("CREATE (:Developer)")
+            coroutine_two = memgraph_client.cypher("CREATE (:Coffee)")
+            coroutine_three = memgraph_client.cypher("MATCH (n:Developer), (m:Coffee) CREATE (n)-[:LOVES]->(m)")
 
-        assert len(result) == 1
-        assert len(result[0][0].labels) == 1
-        assert list(result[0][0].labels)[0] == "Person"
-        assert dict(result[0][0])["age"] == 24
+            await asyncio.gather(coroutine_one, coroutine_two, coroutine_three)
 
-    async def test_cypher_auto_committing(self, memgraph_client, memgraph_session):
-        labels = ["Developer", "Coffee"]
-        result, keys = await memgraph_client.cypher(f"CREATE (n:{labels[0]}), (m:{labels[1]})", auto_committing=True)
+            assert memgraph_client._driver.session.call_count == 3
 
-        assert len(result) == 0
-        assert len(keys) == 0
+        async def test_cypher_with_params(self, memgraph_client, memgraph_session):
+            result, keys = await memgraph_client.cypher("CREATE (n:Person) SET n.age = $age", {"age": 24})
 
-        query = await memgraph_session.run("MATCH (n) RETURN n")
-        result = await query.values()
-        await query.consume()
+            assert len(result) == 0
+            assert len(keys) == 0
 
-        assert len(result) == 2
-        assert len(result[0][0].labels) == 1
-        assert len(result[0][0].labels) == 1
-        assert list(result[1][0].labels)[0] in labels
-        assert list(result[1][0].labels)[0] in labels
+            query = await memgraph_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
 
-    async def test_cypher_with_params_auto_committing(self, memgraph_client, memgraph_session):
-        result, keys = await memgraph_client.cypher(
-            "CREATE (n:Person) SET n.age = $age", {"age": 24}, auto_committing=True
+            assert len(result) == 1
+            assert len(result[0][0].labels) == 1
+            assert list(result[0][0].labels)[0] == "Person"
+            assert dict(result[0][0])["age"] == 24
+
+        async def test_cypher_auto_committing(self, memgraph_client, memgraph_session):
+            labels = ["Developer", "Coffee"]
+            result, keys = await memgraph_client.cypher(
+                f"CREATE (n:{labels[0]}), (m:{labels[1]})", auto_committing=True
+            )
+
+            assert len(result) == 0
+            assert len(keys) == 0
+
+            query = await memgraph_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 2
+            assert len(result[0][0].labels) == 1
+            assert len(result[0][0].labels) == 1
+            assert list(result[1][0].labels)[0] in labels
+            assert list(result[1][0].labels)[0] in labels
+
+        async def test_cypher_with_params_auto_committing(self, memgraph_client, memgraph_session):
+            result, keys = await memgraph_client.cypher(
+                "CREATE (n:Person) SET n.age = $age", {"age": 24}, auto_committing=True
+            )
+
+            assert len(result) == 0
+            assert len(keys) == 0
+
+            query = await memgraph_session.run("MATCH (n) RETURN n")
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 1
+            assert len(result[0][0].labels) == 1
+            assert list(result[0][0].labels)[0] == "Person"
+            assert dict(result[0][0])["age"] == 24
+
+    class TestMemgraphResolvingModels:
+        async def test_resolves_model_correctly(self, memgraph_client, memgraph_session):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await memgraph_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await memgraph_client.register_models(Person, Related)
+            results, _ = await memgraph_client.cypher("MATCH (n)-[r]->(m) RETURN n, m, r")
+
+            assert len(results[0]) == 3
+
+            assert isinstance(results[0][0], Person)
+            assert results[0][0].id is not None
+            assert results[0][0].element_id is not None
+            assert results[0][0].name == person_one["name"]
+            assert results[0][0].age == person_one["age"]
+            assert results[0][0].is_happy == person_one["is_happy"]
+
+            assert isinstance(results[0][1], Person)
+            assert results[0][1].id is not None
+            assert results[0][1].element_id is not None
+            assert results[0][1].name == person_two["name"]
+            assert results[0][1].age == person_two["age"]
+            assert results[0][1].is_happy == person_two["is_happy"]
+
+            assert isinstance(results[0][2], Related)
+            assert results[0][2].id is not None
+            assert results[0][2].element_id is not None
+            assert results[0][2].days_since == related["days_since"]
+            assert results[0][2].close_friend == related["close_friend"]
+
+        async def test_raises_on_unknown_node_model(self, memgraph_client, memgraph_session):
+            query = await memgraph_session.run("CREATE (:Node)")
+            await query.consume()
+
+            with pytest.raises(ModelResolveError):
+                await memgraph_client.cypher("MATCH (n) RETURN n")
+
+        async def test_raises_on_unknown_relationship_model(self, memgraph_client, memgraph_session):
+            query = await memgraph_session.run("CREATE (:Node)-[:RELATION]->(:Node)")
+            await query.consume()
+
+            with pytest.raises(ModelResolveError):
+                await memgraph_client.cypher("MATCH ()-[r]->() RETURN r")
+
+        async def test_resolves_paths_correctly(self, memgraph_client, memgraph_session):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await memgraph_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await memgraph_client.register_models(Person, Related)
+            results, _ = await memgraph_client.cypher("MATCH path=(n)-[r]->(m) RETURN path")
+
+            assert len(results[0]) == 1
+            assert isinstance(results[0][0], PathContainer)
+            assert all(isinstance(node, Person) for node in results[0][0].nodes)
+            assert all(isinstance(relationship, Related) for relationship in results[0][0].relationships)
+
+        async def test_resolves_relationship_start_and_end_nodes_correctly(self, memgraph_client, memgraph_session):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await memgraph_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await memgraph_client.register_models(Person, Related)
+            results, _ = await memgraph_client.cypher("MATCH (n)-[r]->(m) RETURN r, n, m")
+
+            assert isinstance(results[0][0], RelationshipModel)
+            assert isinstance(results[0][0].start_node, Person)
+            assert results[0][0].start_node.element_id == results[0][1].element_id
+            assert isinstance(results[0][0].end_node, Person)
+            assert results[0][0].end_node.element_id == results[0][2].element_id
+
+        async def test_does_not_resolve_start_and_end_node_if_not_returned_from_query(
+            self, memgraph_client, memgraph_session
+        ):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await memgraph_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await memgraph_client.register_models(Person, Related)
+            results, _ = await memgraph_client.cypher("MATCH ()-[r]->() RETURN r")
+
+            assert isinstance(results[0][0], RelationshipModel)
+            assert results[0][0].start_node is None
+            assert results[0][0].end_node is None
+
+    async def test_resolves_nested_properties(self, memgraph_client, memgraph_session):
+        class DeeplyNested(BaseModel):
+            nested_count: int
+
+        class Nested(BaseModel):
+            is_nested: bool
+            deeply_nested_items: List[DeeplyNested]
+            deeply_nested_once: DeeplyNested
+
+        class Person(NodeModel):
+            nested: Nested
+            id_: int
+
+        query = await memgraph_session.run(
+            "CREATE (n:Person {id_: $id, nested: $nested})",
+            {
+                "id": 1,
+                "nested": {
+                    "is_nested": True,
+                    "deeply_nested_once": {"nested_count": 1},
+                    "deeply_nested_items": [
+                        {"nested_count": 2},
+                        {"nested_count": 4},
+                    ],
+                },
+            },
         )
-
-        assert len(result) == 0
-        assert len(keys) == 0
-
-        query = await memgraph_session.run("MATCH (n) RETURN n")
-        result = await query.values()
         await query.consume()
 
-        assert len(result) == 1
-        assert len(result[0][0].labels) == 1
-        assert list(result[0][0].labels)[0] == "Person"
-        assert dict(result[0][0])["age"] == 24
+        await memgraph_client.register_models(Person)
+        results, _ = await memgraph_client.cypher("MATCH (n:Person) RETURN n")
+
+        assert len(results[0]) == 1
+        assert isinstance(results[0][0], Person)
+        assert results[0][0].id_ == 1
+        assert results[0][0].nested.is_nested
+        assert results[0][0].nested.deeply_nested_once.nested_count == 1
+        assert len(results[0][0].nested.deeply_nested_items) == 2
+        assert results[0][0].nested.deeply_nested_items[0].nested_count == 2
+        assert results[0][0].nested.deeply_nested_items[1].nested_count == 4
+
+    async def test_resolves_non_homogeneous_lists(self, memgraph_client, memgraph_session):
+        class RandomList(NodeModel):
+            items: Union[str, int, bool, Dict[str, Any], List[Any]]
+
+        query = await memgraph_session.run(
+            "CREATE (n:RandomList {items: $items})",
+            {"items": ["random", 12, False, {"random_key": "something"}, [True, 4, 5.1]]},
+        )
+        await query.consume()
+
+        await memgraph_client.register_models(RandomList)
+        results, _ = await memgraph_client.cypher("MATCH (n:RandomList) RETURN n")
+
+        assert len(results[0]) == 1
+        assert isinstance(results[0][0], RandomList)
+        assert len(results[0][0].items) == 5
+        assert results[0][0].items[0] == "random"
+        assert results[0][0].items[1] == 12
+        assert not results[0][0].items[2]
+        assert results[0][0].items[3] == {"random_key": "something"}
+        assert results[0][0].items[4] == [True, 4, 5.1]
 
 
 class TestMemgraphModelInitialization:
@@ -888,7 +1105,8 @@ class TestMemgraphModelInitialization:
         class Likes(RelationshipModel):
             uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
 
-        client = await MemgraphClient().connect(
+        client = MemgraphClient()
+        await client.connect(
             ConnectionString.MEMGRAPH.value,
             auth=Authentication.MEMGRAPH.value,
             skip_constraints=True,
@@ -919,7 +1137,8 @@ class TestMemgraphModelInitialization:
 
             ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
 
-        client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+        client = MemgraphClient()
+        await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
         await client.register_models(Person, Likes)
 
         query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -942,7 +1161,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, UniquenessConstraint()]
 
-            client = await MemgraphClient().connect(
+            client = MemgraphClient()
+            await client.connect(
                 ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_constraints=True
             )
             await client.register_models(Person, Likes)
@@ -964,7 +1184,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -980,7 +1201,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, UniquenessConstraint()]
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1012,7 +1234,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1030,7 +1253,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1048,7 +1272,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1065,7 +1290,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1098,7 +1324,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1133,7 +1360,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1150,7 +1378,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1171,7 +1400,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, ExistenceConstraint()]
 
-            client = await MemgraphClient().connect(
+            client = MemgraphClient()
+            await client.connect(
                 ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_constraints=True
             )
             await client.register_models(Person, Likes)
@@ -1193,7 +1423,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1209,7 +1440,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, ExistenceConstraint()]
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1241,7 +1473,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1259,7 +1492,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1277,7 +1511,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1294,7 +1529,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1327,7 +1563,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1361,7 +1598,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
-            client = await MemgraphClient().connect(
+            client = MemgraphClient()
+            await client.connect(
                 ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_constraints=True
             )
             await client.register_models(Person, Likes)
@@ -1383,7 +1621,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1399,7 +1638,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1435,7 +1675,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1454,7 +1695,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1473,7 +1715,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1490,7 +1733,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1527,7 +1771,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW CONSTRAINT INFO")
@@ -1565,9 +1810,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, PropertyIndex()]
 
-            client = await MemgraphClient().connect(
-                ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_indexes=True
-            )
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_indexes=True)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1587,7 +1831,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"skip_index_creation": True}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1603,7 +1848,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, PropertyIndex()]
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1635,7 +1881,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1653,7 +1900,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1671,7 +1919,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1688,7 +1937,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1721,7 +1971,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1755,9 +2006,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, PointIndex()]
 
-            client = await MemgraphClient().connect(
-                ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_indexes=True
-            )
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value, skip_indexes=True)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1777,7 +2027,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"skip_index_creation": True}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1793,7 +2044,8 @@ class TestMemgraphModelInitialization:
             class Likes(RelationshipModel):
                 uid: Annotated[str, PointIndex()]
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person, Likes)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1825,7 +2077,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1843,7 +2096,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1861,7 +2115,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             with pytest.raises(ValueError):
                 await client.register_models(Person)
 
@@ -1878,7 +2133,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
@@ -1911,7 +2167,8 @@ class TestMemgraphModelInitialization:
 
                 ogm_config = {"labels": ["Person", "Human"]}
 
-            client = await MemgraphClient().connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
+            client = MemgraphClient()
+            await client.connect(ConnectionString.MEMGRAPH.value, auth=Authentication.MEMGRAPH.value)
             await client.register_models(Person)
 
             query = await memgraph_session.run("SHOW INDEX INFO")
