@@ -14,7 +14,7 @@ from neo4j.exceptions import AuthError, ClientError
 from pydantic import BaseModel
 from typing_extensions import Annotated
 
-from pyneo4j_ogm.clients.neo4j import Neo4jClient, ensure_neo4j_version
+from pyneo4j_ogm.clients.neo4j import Neo4jClient, ensure_neo4j_semver_version
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
     DuplicateModelError,
@@ -108,14 +108,79 @@ async def check_no_indexes(session: neo4j.AsyncSession):
 
 
 class TestNeo4jVersionDecorator:
-    async def test_version_is_none(self):
-        @ensure_neo4j_version(1, 1, 1)
+    async def test_raises_when_version_is_none(self):
+        @ensure_neo4j_semver_version(1, 1, 1)
         async def decorated_method(*args, **kwargs):
             pass
 
         with pytest.raises(ClientNotInitializedError):
             mocked_client = SimpleNamespace()
             await decorated_method(mocked_client)
+
+    async def test_does_not_raise_for_valid_version(self):
+        class MajorVersion:
+            _version = "7.1.2"
+
+            @ensure_neo4j_semver_version(6, 3, 5)
+            async def decorated_method(*args, **kwargs):
+                pass
+
+        class MinorVersion:
+            _version = "5.5.2"
+
+            @ensure_neo4j_semver_version(5, 3, 5)
+            async def decorated_method(*args, **kwargs):
+                pass
+
+        class PatchVersion:
+            _version = "5.1.7"
+
+            @ensure_neo4j_semver_version(5, 1, 5)
+            async def decorated_method(*args, **kwargs):
+                pass
+
+        major_version = MajorVersion()
+        minor_version = MinorVersion()
+        patch_version = PatchVersion()
+
+        await major_version.decorated_method()
+        await minor_version.decorated_method()
+        await patch_version.decorated_method()
+
+    async def test_raises_on_min_version_violation(self):
+        class MajorVersion:
+            _version = "5.1.2"
+
+            @ensure_neo4j_semver_version(6, 3, 5)
+            async def decorated_method(*args, **kwargs):
+                pass
+
+        class MinorVersion:
+            _version = "5.1.2"
+
+            @ensure_neo4j_semver_version(5, 3, 5)
+            async def decorated_method(*args, **kwargs):
+                pass
+
+        class PatchVersion:
+            _version = "5.1.4"
+
+            @ensure_neo4j_semver_version(5, 1, 5)
+            async def decorated_method(*args, **kwargs):
+                pass
+
+        major_version = MajorVersion()
+        minor_version = MinorVersion()
+        patch_version = PatchVersion()
+
+        with pytest.raises(UnsupportedDatabaseVersionError):
+            await major_version.decorated_method()
+
+        with pytest.raises(UnsupportedDatabaseVersionError):
+            await minor_version.decorated_method()
+
+        with pytest.raises(UnsupportedDatabaseVersionError):
+            await patch_version.decorated_method()
 
 
 class TestNeo4jConnection:
