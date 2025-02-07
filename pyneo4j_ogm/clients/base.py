@@ -17,6 +17,7 @@ from typing import (
     Set,
     Tuple,
     Type,
+    TypedDict,
     Union,
     cast,
 )
@@ -38,6 +39,11 @@ from pyneo4j_ogm.models.relationship import RelationshipModel
 from pyneo4j_ogm.options.model_options import ValidatedNodeConfiguration
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.registry import Registry
+
+
+class ResolvedModelsCache(TypedDict):
+    nodes: Dict[str, NodeModel]
+    relationships: Dict[str, RelationshipModel]
 
 
 def initialize_models_after(func):
@@ -613,6 +619,7 @@ class Pyneo4jClient(ABC):
         Returns:
             List[List[Any]]: The resolved list of results.
         """
+        cached: ResolvedModelsCache = {"nodes": {}, "relationships": {}}
         resolved_result: List[List[Any]] = []
 
         if len(query_results) == 0:
@@ -625,11 +632,11 @@ class Pyneo4jClient(ABC):
                 resolved_result[list_index].append([])
 
                 if isinstance(result, Node):
-                    resolved_result[list_index][result_index] = self.__resolve_graph_node(result)
+                    resolved_result[list_index][result_index] = self.__resolve_graph_node(result, cached)
                 elif isinstance(result, Relationship):
-                    resolved_result[list_index][result_index] = self.__resolve_graph_relationship(result)
+                    resolved_result[list_index][result_index] = self.__resolve_graph_relationship(result, cached)
                 elif isinstance(result, Path):
-                    resolved_result[list_index][result_index] = self.__resolve_graph_path(result)
+                    resolved_result[list_index][result_index] = self.__resolve_graph_path(result, cached)
                     pass
                 else:
                     # The result could also include some static values like strings/numbers/etc, in which case we do nothing
@@ -637,12 +644,13 @@ class Pyneo4jClient(ABC):
 
         return resolved_result
 
-    def __resolve_graph_node(self, graph_node: Node) -> NodeModel:
+    def __resolve_graph_node(self, graph_node: Node, cached: ResolvedModelsCache) -> NodeModel:
         """
         Resolves the provided graph node to it's corresponding NodeModel instance.
 
         Args:
             graph_node (Node): The graph node to resolve.
+            cached (ResolvedModelsCache): The cache of all already resolved models from the current result.
 
         Raises:
             ModelResolveError: If the model is not registered.
@@ -651,6 +659,10 @@ class Pyneo4jClient(ABC):
         Returns:
             NodeModel: The resolved NodeModel instance of the graph node.
         """
+        if graph_node.element_id in cached["nodes"]:
+            logger.debug("Node %s already resolved, using cached value", graph_node.element_id)
+            return cached["nodes"][graph_node.element_id]
+
         logger.debug("Attempting to resolve model for graph node %s", graph_node.element_id)
         node_labels = list(graph_node.labels)
         model_hash = self.__identifier_hash(node_labels)
@@ -666,7 +678,11 @@ class Pyneo4jClient(ABC):
             # We can be sure that this will be a instance of NodeModel since this should be ensured once the model
             # is registered
             model = cast(NodeModel, self._registered_models[model_hash])
-            return model._inflate(graph_node)
+            inflated = model._inflate(graph_node)
+
+            # Cache inflated model in case it has to be resolved multiple times
+            cached["nodes"][graph_node.element_id] = inflated
+            return inflated
         except Exception as exc:
             logger.error(
                 "Resolving graph entity to model failed. Graph entity %s includes incompatible data or is not retrievable.",
@@ -677,12 +693,15 @@ class Pyneo4jClient(ABC):
                 raise exc
             raise ModelResolveError(node_labels) from exc
 
-    def __resolve_graph_relationship(self, graph_relationship: Relationship) -> RelationshipModel:
+    def __resolve_graph_relationship(
+        self, graph_relationship: Relationship, cached: ResolvedModelsCache
+    ) -> RelationshipModel:
         """
         Resolves the provided graph node to it's corresponding RelationshipModel instance.
 
         Args:
             graph_relationship (Relationship): The graph relationship to resolve.
+            cached (ResolvedModelsCache): The cache of all already resolved models from the current result.
 
         Raises:
             ModelResolveError: If the model is not registered.
@@ -691,6 +710,10 @@ class Pyneo4jClient(ABC):
         Returns:
             RelationshipModel: The resolved RelationshipModel instance of the graph relationship.
         """
+        if graph_relationship.element_id in cached["relationships"]:
+            logger.debug("Relationship %s already resolved, using cached value", graph_relationship.element_id)
+            return cached["relationships"][graph_relationship.element_id]
+
         logger.debug("Attempting to resolve model for graph node %s", graph_relationship.element_id)
         model_hash = self.__identifier_hash(graph_relationship.type)
 
@@ -713,15 +736,19 @@ class Pyneo4jClient(ABC):
             # from the query in Memgraph, labels and properties will be missing on the `Relationship.start_node` property.
             try:
                 if graph_relationship.start_node is not None:
-                    resolved_start_node = self.__resolve_graph_node(graph_relationship.start_node)
+                    resolved_start_node = self.__resolve_graph_node(graph_relationship.start_node, cached)
 
                 if graph_relationship.end_node is not None:
-                    resolved_end_node = self.__resolve_graph_node(graph_relationship.end_node)
+                    resolved_end_node = self.__resolve_graph_node(graph_relationship.end_node, cached)
             except ModelResolveError:
                 # If this fails we can safely skip it
                 pass
 
-            return model._inflate(graph_relationship, resolved_start_node, resolved_end_node)
+            inflated = model._inflate(graph_relationship, resolved_start_node, resolved_end_node)
+
+            # Cache inflated model in case it has to be resolved multiple times
+            cached["relationships"][graph_relationship.element_id] = inflated
+            return inflated
         except Exception as exc:
             logger.error(
                 "Resolving graph entity to model failed. Graph entity %s includes incompatible data or is not retrievable.",
@@ -732,12 +759,13 @@ class Pyneo4jClient(ABC):
                 raise exc
             raise ModelResolveError(graph_relationship.type) from exc
 
-    def __resolve_graph_path(self, graph_path: Path) -> PathContainer:
+    def __resolve_graph_path(self, graph_path: Path, cached: ResolvedModelsCache) -> PathContainer:
         """
         Resolves the provided graph path and it's nodes and relationships. If a single operation fails, a error will be raised.
 
         Args:
             graph_path (Path): The graph path to resolve.
+            cached (ResolvedModelsCache): The cache of all already resolved models from the current result.
 
         Returns:
             PathContainer: A container class providing the same interface as the `Path` class from the neo4j driver.
@@ -748,11 +776,11 @@ class Pyneo4jClient(ABC):
 
         try:
             for node in graph_path.nodes:
-                resolved = self.__resolve_graph_node(node)
+                resolved = self.__resolve_graph_node(node, cached)
                 nodes.append(resolved)
 
             for relationship in graph_path.relationships:
-                resolved = self.__resolve_graph_relationship(relationship)
+                resolved = self.__resolve_graph_relationship(relationship, cached)
                 relationships.append(resolved)
 
             return PathContainer(tuple(nodes), tuple(relationships))
