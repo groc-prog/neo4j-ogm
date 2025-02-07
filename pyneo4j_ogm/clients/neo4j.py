@@ -1,3 +1,4 @@
+import re
 from functools import wraps
 from typing import Dict, List, Optional, Type, TypedDict, Union, cast
 from uuid import uuid4
@@ -38,10 +39,13 @@ ModelInitializationMapping = Dict[
 ]
 
 
-def ensure_neo4j_version(major_version: int, minor_version: int, patch_version: int):
+def ensure_neo4j_semver_version(major_version: int, minor_version: int, patch_version: int):
     """
     Ensures that the connected Neo4j database has a minimum version. Only usable for
     `Neo4jClient`.
+
+    **Note**: This implementation currently only checks semver versions. Neo4j uses
+    different versioning since january 2025.
 
     Args:
         major_version (int): The lowest allowed major version.
@@ -58,10 +62,17 @@ def ensure_neo4j_version(major_version: int, minor_version: int, patch_version: 
             if version is None:
                 raise ClientNotInitializedError()
 
-            major, minor, patch = [int(semver_partial) for semver_partial in version.split(".")]
+            # Check that the version in a semver format
+            is_semver_format = bool(re.match(r"^\d+\.\d+\.\d+$", version))
+            if is_semver_format:
+                major, minor, patch = [int(semver_partial) for semver_partial in version.split(".")]
 
-            if major < major_version or minor < minor_version or patch < patch_version:
-                raise UnsupportedDatabaseVersionError()
+                if (
+                    major < major_version
+                    or (major == major_version and minor < minor_version)
+                    or (major == major_version and minor == minor_version and patch < patch_version)
+                ):
+                    raise UnsupportedDatabaseVersionError()
 
             result = await func(self, *args, **kwargs)
             return result
@@ -310,7 +321,7 @@ class Neo4jClient(Pyneo4jClient):
         )
 
     @ensure_initialized
-    @ensure_neo4j_version(5, 18, 0)
+    @ensure_neo4j_semver_version(5, 18, 0)
     async def vector_index(
         self,
         name: str,
