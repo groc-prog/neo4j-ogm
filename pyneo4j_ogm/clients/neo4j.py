@@ -72,7 +72,7 @@ def ensure_neo4j_semver_version(major_version: int, minor_version: int, patch_ve
                     or (major == major_version and minor < minor_version)
                     or (major == major_version and minor == minor_version and patch < patch_version)
                 ):
-                    raise UnsupportedDatabaseVersionError()
+                    raise UnsupportedDatabaseVersionError(f"{major}.{minor}.{patch}")
 
             result = await func(self, *args, **kwargs)
             return result
@@ -364,7 +364,7 @@ class Neo4jClient(Pyneo4jClient):
         self._version = version
 
         if int(version.split(".")[0]) < 5:
-            raise UnsupportedDatabaseVersionError()
+            raise UnsupportedDatabaseVersionError("5.0.0")
 
     @ensure_initialized
     async def _initialize_models(self) -> None:

@@ -1,9 +1,15 @@
 import json
+from abc import abstractmethod
 from copy import deepcopy
 from typing import Any, ClassVar, Dict, List, Optional, Self, Set, Union, cast
 
 from neo4j.graph import Graph, Node, Relationship
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import (
+    BaseModel,
+    PrivateAttr,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 from typing_extensions import get_args, get_origin
 
 from pyneo4j_ogm.data_types import ALLOWED_NEO4J_LIST_TYPES, ALLOWED_TYPES
@@ -23,8 +29,8 @@ class ModelBase(BaseModel):
     of model properties.
     """
 
-    id: Optional[int] = Field(default=None, frozen=True)
-    element_id: Optional[str] = Field(default=None, frozen=True)
+    _id: Optional[int] = PrivateAttr(None)
+    _element_id: Optional[str] = PrivateAttr(None)
 
     _graph: Optional[Graph] = PrivateAttr()
     _registry: Registry = PrivateAttr()
@@ -45,6 +51,50 @@ class ModelBase(BaseModel):
 
         merged_config = cls.__merge_config(parent_config.model_dump(), model_config.model_dump())
         setattr(cls, "ogm_config", ModelConfigurationValidator(**merged_config).model_dump())
+
+    @model_serializer(mode="wrap")
+    def serialize_model(self, handler: SerializerFunctionWrapHandler) -> Dict[str, Any]:
+        serialized = handler(self)
+        serialized["id"] = self._id
+        serialized["element_id"] = self._element_id
+
+        return serialized
+
+    @abstractmethod
+    async def create(self) -> None:
+        """
+        Creates a new graph entity from the current instance in the database. The current instance will then
+        be updated with the `id` and `element_id` from the database.
+
+        After the method is finished, a newly created instance is seen as `hydrated` and all methods
+        can be called on it.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    async def update(self) -> None:
+        """
+        Updates the corresponding graph entity in the database.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    async def delete(self) -> None:
+        """
+        Deletes the corresponding graph entity in the database.
+
+        After the method is finished, the current instance is seen as `destroyed` and all methods
+        called on it will raise `EntityDestroyedError`.
+        """
+        pass  # pragma: no cover
+
+    @property
+    def element_id(self) -> Optional[str]:
+        return self._element_id
+
+    @property
+    def id(self) -> Optional[int]:
+        return self._id
 
     @property
     def graph(self) -> Optional[Graph]:
