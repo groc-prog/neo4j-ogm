@@ -906,6 +906,85 @@ class TestMemgraphQueries:
             assert results[0][2].days_since == related["days_since"]
             assert results[0][2].close_friend == related["close_friend"]
 
+        async def test_uses_cached_resolved_models(self, memgraph_client, memgraph_session):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await memgraph_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await memgraph_client.register_models(Person, Related)
+
+            with patch.object(Person, "_inflate", wraps=Person._inflate) as person_spy:
+                with patch.object(Related, "_inflate", wraps=Related._inflate) as related_spy:
+                    await memgraph_client.cypher("MATCH (n)-[r]->(m) RETURN [n, n, m, m, r, r]")
+
+                    assert person_spy.call_count == 2
+                    assert related_spy.call_count == 1
+
+        async def test_resolve_nested_structures(self, memgraph_client, memgraph_session):
+            class Person(NodeModel):
+                age: int
+                name: str
+                is_happy: bool
+
+            class Related(RelationshipModel):
+                days_since: int
+                close_friend: bool
+
+            person_one = {"age": 24, "name": "Bobby Tables", "is_happy": True}
+            person_two = {"age": 53, "name": "John Doe", "is_happy": False}
+            related = {"days_since": 213, "close_friend": True}
+
+            query = await memgraph_session.run(
+                "CREATE (:Person {age: $p_one_age, name: $p_one_name, is_happy: $p_one_is_happy})-[:RELATED {days_since: $related_days_since, close_friend: $related_close_friend}]->(:Person {age: $p_two_age, name: $p_two_name, is_happy: $p_two_is_happy})",
+                {
+                    "p_one_age": person_one["age"],
+                    "p_one_name": person_one["name"],
+                    "p_one_is_happy": person_one["is_happy"],
+                    "p_two_age": person_two["age"],
+                    "p_two_name": person_two["name"],
+                    "p_two_is_happy": person_two["is_happy"],
+                    "related_days_since": related["days_since"],
+                    "related_close_friend": related["close_friend"],
+                },
+            )
+            await query.consume()
+
+            await memgraph_client.register_models(Person, Related)
+            results, _ = await memgraph_client.cypher(
+                "MATCH (n)-[r]->(m) RETURN [n, {end_node: m}, {nested: {relationship: r}}]"
+            )
+
+            assert isinstance(results[0][0][0], Person)
+            assert results[0][0][0].age == 24
+            assert isinstance(results[0][0][1]["end_node"], Person)
+            assert results[0][0][1]["end_node"].age == 53
+            assert isinstance(results[0][0][2]["nested"]["relationship"], Related)
+            assert results[0][0][2]["nested"]["relationship"].days_since == 213
+
         async def test_raises_on_unknown_node_model(self, memgraph_client, memgraph_session):
             query = await memgraph_session.run("CREATE (:Node)")
             await query.consume()
