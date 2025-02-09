@@ -1007,6 +1007,9 @@ class TestNeo4jQueries:
 
             assert len(results[0]) == 1
             assert isinstance(results[0][0], PathContainer)
+            assert results[0][0].graph is not None
+            assert isinstance(results[0][0].start_node, Person)
+            assert isinstance(results[0][0].end_node, Person)
             assert all(isinstance(node, Person) for node in results[0][0].nodes)
             assert all(isinstance(relationship, Related) for relationship in results[0][0].relationships)
 
