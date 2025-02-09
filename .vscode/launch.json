@@ -5,11 +5,12 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Current File",
+      "name": "Python: main.py",
       "type": "debugpy",
       "request": "launch",
-      "program": "${file}",
+      "program": "main.py",
       "console": "internalConsole",
+      "internalConsoleOptions": "neverOpen",
       "justMyCode": true,
       "env": {
         "PYNEO4J_LOGLEVEL": "20"

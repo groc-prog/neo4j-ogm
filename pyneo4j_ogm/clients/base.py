@@ -537,8 +537,12 @@ class Pyneo4jClient(ABC):
             results = [list(result.values()) async for result in query_result]
             keys = list(query_result.keys())
 
-            if resolve_models:
-                results = self.__resolve_graph_entity(results)
+            if resolve_models and len(results) > 0:
+                cache: ResolvedModelsCache = {"nodes": {}, "relationships": {}}
+
+                for list_index, result_list in enumerate(results):
+                    for index, result in enumerate(result_list):
+                        results[list_index][index] = self.__resolve_graph_entity(result, cache)
 
             summary = await query_result.consume()
             logger.info("Query finished after %dms", summary.result_available_after or query_duration)
@@ -594,8 +598,12 @@ class Pyneo4jClient(ABC):
             results = [list(result.values()) async for result in query_result]
             keys = list(query_result.keys())
 
-            if resolve_models:
-                results = self.__resolve_graph_entity(results)
+            if resolve_models and len(results) > 0:
+                cache: ResolvedModelsCache = {"nodes": {}, "relationships": {}}
+
+                for list_index, result_list in enumerate(results):
+                    for index, result in enumerate(result_list):
+                        results[list_index][index] = self.__resolve_graph_entity(result, cache)
 
             summary = await query_result.consume()
             logger.info("Query finished after %dms", summary.result_available_after or query_duration)
@@ -609,38 +617,38 @@ class Pyneo4jClient(ABC):
             logger.error("Query exception: %s", exc)
             raise exc
 
-    def __resolve_graph_entity(self, query_results: List[List[Any]]) -> List[List[Any]]:
+    def __resolve_graph_entity(self, query_result: Any, cache: ResolvedModelsCache) -> Any:
         """
         Resolves the provided list of query results to their corresponding models.
 
         Args:
-            query_results (List[List[Any]]): The list of results to resolve.
+            query_result (Any): The result to resolve.
+            cache (ResolvedModelsCache): Dictionary containing already resolved model instances.
 
         Returns:
-            List[List[Any]]: The resolved list of results.
+            Any: The resolved result.
         """
-        cached: ResolvedModelsCache = {"nodes": {}, "relationships": {}}
-        resolved_result: List[List[Any]] = []
+        resolved_result: Any
 
-        if len(query_results) == 0:
-            return query_results
+        if isinstance(query_result, Node):
+            resolved_result = self.__resolve_graph_node(query_result, cache)
+        elif isinstance(query_result, Relationship):
+            resolved_result = self.__resolve_graph_relationship(query_result, cache)
+        elif isinstance(query_result, Path):
+            resolved_result = self.__resolve_graph_path(query_result, cache)
+        elif isinstance(query_result, list):
+            resolved_result = []
 
-        for list_index, result_list in enumerate(query_results):
-            resolved_result.append([])
+            for item in query_result:
+                resolved_result.append(self.__resolve_graph_entity(item, cache))
+        elif isinstance(query_result, dict):
+            resolved_result = {}
 
-            for result_index, result in enumerate(result_list):
-                resolved_result[list_index].append([])
-
-                if isinstance(result, Node):
-                    resolved_result[list_index][result_index] = self.__resolve_graph_node(result, cached)
-                elif isinstance(result, Relationship):
-                    resolved_result[list_index][result_index] = self.__resolve_graph_relationship(result, cached)
-                elif isinstance(result, Path):
-                    resolved_result[list_index][result_index] = self.__resolve_graph_path(result, cached)
-                    pass
-                else:
-                    # The result could also include some static values like strings/numbers/etc, in which case we do nothing
-                    resolved_result[list_index][result_index] = result
+            for key, value in query_result.items():
+                resolved_result[key] = self.__resolve_graph_entity(value, cache)
+        else:
+            # The result could also include some static values like strings/numbers/etc, in which case we do nothing
+            resolved_result = query_result
 
         return resolved_result
 
