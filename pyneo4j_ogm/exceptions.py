@@ -111,3 +111,27 @@ class EntityDestroyedError(Pyneo4jOrmError):
             "Destroyed model instances can not interact with the database. This usually means the model you are calling this method on has already been deleted.",
             *args,
         )
+
+
+class EntityAlreadyCreatedError(Pyneo4jOrmError):
+    """
+    The instance has already been created in the database.
+    """
+
+    def __init__(self, model_name: str, element_id: str, *args) -> None:
+        super().__init__(
+            f"The {model_name} instance {element_id} has already been created in the database.",
+            *args,
+        )
+
+
+class EntityNotHydratedError(Pyneo4jOrmError):
+    """
+    The instance has not been hydrated yet.
+    """
+
+    def __init__(self, model_name: str, *args) -> None:
+        super().__init__(
+            f"The {model_name} instance has not been hydrated yet. Call the .create() method to create the entity in the database",
+            *args,
+        )
