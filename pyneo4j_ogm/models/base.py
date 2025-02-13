@@ -63,11 +63,14 @@ class ModelBase(BaseModel):
     @abstractmethod
     async def create(self) -> None:
         """
-        Creates a new graph entity from the current instance in the database. The current instance will then
-        be updated with the `id` and `element_id` from the database.
+        Inserts the current instance into the database by creating a new graph entity from it. The
+        current instance will then be updated with the `id` and `element_id` from the database.
 
         After the method is finished, a newly created instance is seen as `hydrated` and all methods
         can be called on it.
+
+        Raises:
+            EntityAlreadyCreatedError: If the instance has already been created and hydrated.
         """
         pass  # pragma: no cover
 
@@ -88,6 +91,13 @@ class ModelBase(BaseModel):
         """
         pass  # pragma: no cover
 
+    @abstractmethod
+    async def refresh(self) -> None:
+        """
+        Refreshes the instance with values from the database.
+        """
+        pass  # pragma: no cover
+
     @property
     def element_id(self) -> Optional[str]:
         return self._element_id
@@ -99,6 +109,13 @@ class ModelBase(BaseModel):
     @property
     def graph(self) -> Optional[Graph]:
         return self._graph
+
+    @property
+    def hydrated(self) -> bool:
+        """
+        Whether the property has been hydrated.
+        """
+        return self._id is not None and self._element_id is not None
 
     @classmethod
     def _inflate(cls, graph_entity: Union[Node, Relationship]) -> Self:
