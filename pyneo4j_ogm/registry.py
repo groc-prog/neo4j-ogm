@@ -69,6 +69,8 @@ class Registry:
         registered_clients.add(client)
 
         if getattr(self._thread_ctx, "active_client", None) is None and len(registered_clients) > 0:
+            # First client will be set as active by default
+            logger.info("Setting client %s as active", client)
             setattr(self._thread_ctx, "active_client", client)
 
     def deregister(self, client: Pyneo4jClient) -> None:
@@ -91,13 +93,13 @@ class Registry:
         # NOTE: Maybe we want to raise an exception here instead so we don't get some **magic** behavior
         # if someone de-registers the currently active client
         if self.active_client == client:
-            logger.debug("Active client de-registered, switching active client")
+            logger.warning("Active client de-registered, switching active client")
 
             if len(registered_clients) > 0:
-                logger.debug("Other available client found")
+                logger.info("Setting client %s as active", client)
                 setattr(self._thread_ctx, "active_client", next(iter(registered_clients)))
             else:
-                logger.debug("No other registered clients found")
+                logger.info("No other registered clients found")
                 setattr(self._thread_ctx, "active_client", None)
 
     def set_active_client(self, client: Optional[Pyneo4jClient]) -> None:
@@ -118,6 +120,7 @@ class Registry:
         ):
             raise ValueError("Client must be a instance of `Pyneo4jClient`")
 
+        logger.info("Setting client %s as active", client)
         setattr(self._thread_ctx, "active_client", client)
 
 
