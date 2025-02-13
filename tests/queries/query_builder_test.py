@@ -1,93 +1,118 @@
 # pylint: disable=missing-class-docstring
 
+from unittest.mock import patch
+from uuid import UUID
+
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.types.graph import RelationshipDirection
 
 
 class TestNodePattern:
     def test_empty_pattern(self):
-        pattern = QueryBuilder.node_pattern()
+        pattern = QueryBuilder.build_node_pattern()
 
         assert pattern == "()"
 
     def test_pattern_with_ref(self):
-        pattern = QueryBuilder.node_pattern("n")
+        pattern = QueryBuilder.build_node_pattern("n")
 
         assert pattern == "(n)"
 
     def test_pattern_with_single_label(self):
-        pattern = QueryBuilder.node_pattern(labels="Person")
+        pattern = QueryBuilder.build_node_pattern(labels="Person")
 
         assert pattern == "(:Person)"
 
     def test_pattern_with_single_label_and_ref(self):
-        pattern = QueryBuilder.node_pattern("n", "Person")
+        pattern = QueryBuilder.build_node_pattern("n", "Person")
 
         assert pattern == "(n:Person)"
 
     def test_pattern_with_multiple_label(self):
-        pattern = QueryBuilder.node_pattern(labels=["Person", "Worker", "Retail"])
+        pattern = QueryBuilder.build_node_pattern(labels=["Person", "Worker", "Retail"])
 
         assert pattern == "(:Person:Worker:Retail)"
 
     def test_pattern_with_multiple_label_pipe_chaining(self):
-        pattern = QueryBuilder.node_pattern(labels=["Person", "Worker", "Retail"], pipe_chaining=True)
+        pattern = QueryBuilder.build_node_pattern(labels=["Person", "Worker", "Retail"], pipe_chaining=True)
 
         assert pattern == "(:Person|Worker|Retail)"
 
     def test_pattern_with_multiple_label_with_ref(self):
-        pattern = QueryBuilder.node_pattern("n", ["Person", "Worker", "Retail"])
+        pattern = QueryBuilder.build_node_pattern("n", ["Person", "Worker", "Retail"])
 
         assert pattern == "(n:Person:Worker:Retail)"
 
 
 class TestRelationshipPattern:
     def test_empty_pattern(self):
-        pattern = QueryBuilder.relationship_pattern()
+        pattern = QueryBuilder.build_relationship_pattern()
 
         assert pattern == "()-[]->()"
 
     def test_pattern_with_relationship_ref(self):
-        pattern = QueryBuilder.relationship_pattern("r")
+        pattern = QueryBuilder.build_relationship_pattern("r")
 
         assert pattern == "()-[r]->()"
 
     def test_pattern_with_relationship_type(self):
-        pattern = QueryBuilder.relationship_pattern(types="LOVES")
+        pattern = QueryBuilder.build_relationship_pattern(types="LOVES")
 
         assert pattern == "()-[:LOVES]->()"
 
     def test_pattern_with_multiple_relationship_type(self):
-        pattern = QueryBuilder.relationship_pattern(types=["LOVES", "HATES"])
+        pattern = QueryBuilder.build_relationship_pattern(types=["LOVES", "HATES"])
 
         assert pattern == "()-[:LOVES|HATES]->()"
 
     def test_pattern_with_incoming_direction(self):
-        pattern = QueryBuilder.relationship_pattern(direction=RelationshipDirection.INCOMING)
+        pattern = QueryBuilder.build_relationship_pattern(direction=RelationshipDirection.INCOMING)
 
         assert pattern == "()<-[]-()"
 
     def test_pattern_with_outgoing_direction(self):
-        pattern = QueryBuilder.relationship_pattern(direction=RelationshipDirection.OUTGOING)
+        pattern = QueryBuilder.build_relationship_pattern(direction=RelationshipDirection.OUTGOING)
 
         assert pattern == "()-[]->()"
 
     def test_pattern_with_no_direction(self):
-        pattern = QueryBuilder.relationship_pattern(direction=RelationshipDirection.BOTH)
+        pattern = QueryBuilder.build_relationship_pattern(direction=RelationshipDirection.BOTH)
 
         assert pattern == "()-[]-()"
 
     def test_pattern_with_ref_and_type(self):
-        pattern = QueryBuilder.relationship_pattern("r", "LOVES")
+        pattern = QueryBuilder.build_relationship_pattern("r", "LOVES")
 
         assert pattern == "()-[r:LOVES]->()"
 
     def test_pattern_with_start_node_ref(self):
-        pattern = QueryBuilder.relationship_pattern(start_node_ref="n", start_node_labels=["Person", "Worker"])
+        pattern = QueryBuilder.build_relationship_pattern(start_node_ref="n", start_node_labels=["Person", "Worker"])
 
         assert pattern == "(n:Person:Worker)-[]->()"
 
     def test_pattern_with_end_node_ref(self):
-        pattern = QueryBuilder.relationship_pattern(end_node_ref="n", end_node_labels=["Person", "Worker"])
+        pattern = QueryBuilder.build_relationship_pattern(end_node_ref="n", end_node_labels=["Person", "Worker"])
 
         assert pattern == "()-[]->(n:Person:Worker)"
+
+
+class TestSetClause:
+    def test_set_clause_without_properties(self):
+        clause, placeholders = QueryBuilder.build_set_clause("n", {})
+
+        assert clause == ""
+        assert not placeholders
+
+    def test_set_clause_with_properties(self):
+        mock_uuids = [UUID("11111111-1111-1111-1111-111111111111"), UUID("22222222-2222-2222-2222-222222222222")]
+
+        with patch("pyneo4j_ogm.queries.query_builder.uuid4", side_effect=mock_uuids):
+            clause, placeholders = QueryBuilder.build_set_clause("n", {"prop1": "val1", "prop2": "val2"})
+
+            assert clause == f"SET n.prop1 = ${mock_uuids[0]}, n.prop2 = ${mock_uuids[1]}"
+
+            for uid in mock_uuids:
+                assert str(uid) in placeholders
+
+            assert placeholders[str(mock_uuids[0])] == "val1"
+            assert placeholders[str(mock_uuids[1])] == "val2"
