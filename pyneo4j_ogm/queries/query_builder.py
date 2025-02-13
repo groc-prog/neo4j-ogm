@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
+from uuid import uuid4
 
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.types.graph import RelationshipDirection
@@ -97,7 +98,7 @@ class QueryBuilder:
         return f"{start_node_pattern}{rel_pattern}{end_node_pattern}"
 
     @classmethod
-    def build_set_clause(cls, ref: str, properties: Dict[str, Any]) -> str:
+    def build_set_clause(cls, ref: str, properties: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """
         Builds a `SET` clause for use in cypher queries.
 
@@ -107,12 +108,18 @@ class QueryBuilder:
                 is the value to be set.
 
         Returns:
-            str: The SET clause.
+            Tuple[str, Dict[str, Any]]: The SET clause and all used placeholders.
         """
         if len(properties) == 0:
-            return ""
+            return "", {}
 
-        property_expressions = [
-            f"{ref}.{property_name} = {property_value}" for property_name, property_value in properties.items()
-        ]
-        return f"SET {', '.join(property_expressions)}"
+        placeholders: Dict[str, Any] = {}
+        expressions: List[str] = []
+
+        for property_name, property_value in properties.items():
+            uid = str(uuid4())
+
+            placeholders[uid] = property_value
+            expressions.append(f"{ref}.{property_name} = ${uid}")
+
+        return f"SET {', '.join(expressions)}", placeholders
