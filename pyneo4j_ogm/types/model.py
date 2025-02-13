@@ -1,8 +1,5 @@
 from enum import Enum
-from typing import Literal, Type, TypedDict, Union
-
-from pyneo4j_ogm.models.node import Node
-from pyneo4j_ogm.models.relationship import Relationship
+from typing import Literal, Union
 
 # TODO: Add missing hooks here
 Hooks = Union[
@@ -34,10 +31,3 @@ class Cardinality(Enum):
     ONE = "ONE"
     ONE_OR_MORE = "ONE_OR_MORE"
     MULTIPLE = "MULTIPLE"
-
-
-class CardinalityDefinition(TypedDict):
-    start: Type[Node]
-    end: Type[Node]
-    relationship: Type[Relationship]
-    type_: Cardinality
