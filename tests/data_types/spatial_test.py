@@ -2,8 +2,7 @@
 
 import json
 
-from neo4j.spatial import CartesianPoint as Neo4jCartesianPoint
-from neo4j.spatial import WGS84Point as Neo4jWGS84Point
+import neo4j.spatial
 from pydantic import BaseModel
 
 from pyneo4j_ogm.data_types.spatial import CartesianPoint, WGS84Point
@@ -19,9 +18,9 @@ class WGS84PointModel(BaseModel):
 
 class TestCartesianPoint:
     def test_parsing_from_class(self):
-        model = CartesianPointModel.model_validate({"point": Neo4jCartesianPoint((1.1, 2.2, 3.3))})
+        model = CartesianPointModel.model_validate({"point": neo4j.spatial.CartesianPoint((1.1, 2.2, 3.3))})
 
-        assert isinstance(model.point, Neo4jCartesianPoint)
+        assert isinstance(model.point, neo4j.spatial.CartesianPoint)
         assert model.point.x == 1.1
         assert model.point.y == 2.2
         assert model.point.z == 3.3
@@ -30,7 +29,7 @@ class TestCartesianPoint:
     def test_parsing_from_list(self):
         model = CartesianPointModel.model_validate({"point": [1.1, 2.2, 3.3]})
 
-        assert isinstance(model.point, Neo4jCartesianPoint)
+        assert isinstance(model.point, neo4j.spatial.CartesianPoint)
         assert model.point.x == 1.1
         assert model.point.y == 2.2
         assert model.point.z == 3.3
@@ -39,7 +38,7 @@ class TestCartesianPoint:
     def test_parsing_from_tuple(self):
         model = CartesianPointModel.model_validate({"point": (1.1, 2.2, 3.3)})
 
-        assert isinstance(model.point, Neo4jCartesianPoint)
+        assert isinstance(model.point, neo4j.spatial.CartesianPoint)
         assert model.point.x == 1.1
         assert model.point.y == 2.2
         assert model.point.z == 3.3
@@ -48,7 +47,7 @@ class TestCartesianPoint:
     def test_parsing_from_json(self):
         model = CartesianPointModel.model_validate_json(json.dumps({"point": [1.1, 2.2, 3.3]}))
 
-        assert isinstance(model.point, Neo4jCartesianPoint)
+        assert isinstance(model.point, neo4j.spatial.CartesianPoint)
         assert model.point.x == 1.1
         assert model.point.y == 2.2
         assert model.point.z == 3.3
@@ -56,18 +55,18 @@ class TestCartesianPoint:
 
     # FIXME: https://github.com/pydantic/pydantic/issues/11287
     # def test_serializing(self):
-    #     model = CartesianPointModel.model_validate({"point": Neo4jCartesianPoint((1.1, 2.2, 3.3))})
+    #     model = CartesianPointModel.model_validate({"point": neo4j.spatial.CartesianPoint((1.1, 2.2, 3.3))})
     #     serialized = model.model_dump()
 
     #     assert isinstance(serialized, dict)
-    #     assert isinstance(serialized["point"], Neo4jCartesianPoint)
+    #     assert isinstance(serialized["point"], neo4j.spatial.CartesianPoint)
     #     assert serialized["point"].x == 1.1
     #     assert serialized["point"].y == 2.2
     #     assert serialized["point"].z == 3.3
     #     assert serialized["point"].srid is not None
 
     def test_serializing_json(self):
-        model = CartesianPointModel.model_validate({"point": Neo4jCartesianPoint((1.1, 2.2, 3.3))})
+        model = CartesianPointModel.model_validate({"point": neo4j.spatial.CartesianPoint((1.1, 2.2, 3.3))})
         serialized = model.model_dump_json()
         parsed_serialized = json.loads(serialized)
 
@@ -76,7 +75,7 @@ class TestCartesianPoint:
         assert parsed_serialized["point"] == [1.1, 2.2, 3.3]
 
     def test_json_schema(self):
-        model = CartesianPointModel.model_validate({"point": Neo4jCartesianPoint((1.1, 2.2, 3.3))})
+        model = CartesianPointModel.model_validate({"point": neo4j.spatial.CartesianPoint((1.1, 2.2, 3.3))})
         schema = model.model_json_schema()
 
         assert "point" in schema["properties"]
@@ -85,9 +84,9 @@ class TestCartesianPoint:
 
 class TestWGS84Point:
     def test_parsing_from_class(self):
-        model = WGS84PointModel.model_validate({"point": Neo4jWGS84Point((1.1, 2.2, 3.3))})
+        model = WGS84PointModel.model_validate({"point": neo4j.spatial.WGS84Point((1.1, 2.2, 3.3))})
 
-        assert isinstance(model.point, Neo4jWGS84Point)
+        assert isinstance(model.point, neo4j.spatial.WGS84Point)
         assert model.point.longitude == 1.1
         assert model.point.latitude == 2.2
         assert model.point.height == 3.3
@@ -96,7 +95,7 @@ class TestWGS84Point:
     def test_parsing_from_list(self):
         model = WGS84PointModel.model_validate({"point": [1.1, 2.2, 3.3]})
 
-        assert isinstance(model.point, Neo4jWGS84Point)
+        assert isinstance(model.point, neo4j.spatial.WGS84Point)
         assert model.point.longitude == 1.1
         assert model.point.latitude == 2.2
         assert model.point.height == 3.3
@@ -105,7 +104,7 @@ class TestWGS84Point:
     def test_parsing_from_tuple(self):
         model = WGS84PointModel.model_validate({"point": (1.1, 2.2, 3.3)})
 
-        assert isinstance(model.point, Neo4jWGS84Point)
+        assert isinstance(model.point, neo4j.spatial.WGS84Point)
         assert model.point.longitude == 1.1
         assert model.point.latitude == 2.2
         assert model.point.height == 3.3
@@ -114,7 +113,7 @@ class TestWGS84Point:
     def test_parsing_from_json(self):
         model = WGS84PointModel.model_validate_json(json.dumps({"point": [1.1, 2.2, 3.3]}))
 
-        assert isinstance(model.point, Neo4jWGS84Point)
+        assert isinstance(model.point, neo4j.spatial.WGS84Point)
         assert model.point.longitude == 1.1
         assert model.point.latitude == 2.2
         assert model.point.height == 3.3
@@ -122,18 +121,18 @@ class TestWGS84Point:
 
     # FIXME: https://github.com/pydantic/pydantic/issues/11287
     # def test_serializing(self):
-    #     model = WGS84PointModel.model_validate({"point": Neo4jWGS84Point((1.1, 2.2, 3.3))})
+    #     model = WGS84PointModel.model_validate({"point": neo4j.spatial.WGS84Point((1.1, 2.2, 3.3))})
     #     serialized = model.model_dump()
 
     #     assert isinstance(serialized, dict)
-    #     assert isinstance(serialized["point"], Neo4jWGS84Point)
+    #     assert isinstance(serialized["point"], neo4j.spatial.WGS84Point)
     #     assert serialized["point"].longitude == 1.1
     #     assert serialized["point"].latitude == 2.2
     #     assert serialized["point"].height == 3.3
     #     assert serialized["point"].srid is not None
 
     def test_serializing_json(self):
-        model = WGS84PointModel.model_validate({"point": Neo4jWGS84Point((1.1, 2.2, 3.3))})
+        model = WGS84PointModel.model_validate({"point": neo4j.spatial.WGS84Point((1.1, 2.2, 3.3))})
         serialized = model.model_dump_json()
         parsed_serialized = json.loads(serialized)
 
@@ -142,7 +141,7 @@ class TestWGS84Point:
         assert parsed_serialized["point"] == [1.1, 2.2, 3.3]
 
     def test_json_schema(self):
-        model = WGS84PointModel.model_validate({"point": Neo4jWGS84Point((1.1, 2.2, 3.3))})
+        model = WGS84PointModel.model_validate({"point": neo4j.spatial.WGS84Point((1.1, 2.2, 3.3))})
         schema = model.model_json_schema()
 
         assert "point" in schema["properties"]

@@ -10,7 +10,7 @@ from pyneo4j_ogm.options.model_options import (
 )
 
 
-class NodeModel(ModelBase):
+class Node(ModelBase):
     """
     Base model for all node models. Every node model should inherit from this class to define a
     model.

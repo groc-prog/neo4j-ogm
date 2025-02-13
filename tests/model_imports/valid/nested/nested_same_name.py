@@ -1,6 +1,6 @@
-from pyneo4j_ogm.models.node import NodeModel
-from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.models.node import Node
+from pyneo4j_ogm.models.relationship import Relationship
 
 
-class NestedNodeModel(NodeModel):
+class NestedNodeModel(Node):
     ogm_config = {"labels": ["Nested", "Duplicate"]}

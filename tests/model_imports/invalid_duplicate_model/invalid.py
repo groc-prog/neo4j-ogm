@@ -1,9 +1,9 @@
-from pyneo4j_ogm.models.node import NodeModel
+from pyneo4j_ogm.models.node import Node
 
 
-class NotUniqueNodeModelOne(NodeModel):
+class NotUniqueNodeModelOne(Node):
     ogm_config = {"labels": ["NotUnique"]}
 
 
-class NotUniqueNodeModelTwo(NodeModel):
+class NotUniqueNodeModelTwo(Node):
     ogm_config = {"labels": ["NotUnique"]}

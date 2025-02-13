@@ -1,22 +1,18 @@
 from types import NoneType
 
-from neo4j.spatial import CartesianPoint as _Neo4jCartesianPoint
-from neo4j.spatial import WGS84Point as _Neo4jWGS84Point
-from neo4j.time import Date as _Date
-from neo4j.time import DateTime as _DateTime
-from neo4j.time import Duration as _Duration
-from neo4j.time import Time as _Time
+import neo4j.spatial
+import neo4j.time
 
 from .spatial import CartesianPoint, WGS84Point
 from .temporal import NativeDate, NativeDateTime, NativeDuration, NativeTime
 
 ALLOWED_TYPES = [
-    _Neo4jCartesianPoint,
-    _Neo4jWGS84Point,
-    _DateTime,
-    _Date,
-    _Time,
-    _Duration,
+    neo4j.spatial.CartesianPoint,
+    neo4j.spatial.WGS84Point,
+    neo4j.time.DateTime,
+    neo4j.time.Date,
+    neo4j.time.Time,
+    neo4j.time.Duration,
     list,
     dict,
     bool,
@@ -29,12 +25,12 @@ ALLOWED_TYPES = [
 ]
 
 ALLOWED_NEO4J_LIST_TYPES = [
-    _Neo4jCartesianPoint,
-    _Neo4jWGS84Point,
-    _DateTime,
-    _Date,
-    _Time,
-    _Duration,
+    neo4j.spatial.CartesianPoint,
+    neo4j.spatial.WGS84Point,
+    neo4j.time.DateTime,
+    neo4j.time.Date,
+    neo4j.time.Time,
+    neo4j.time.Duration,
     bool,
     int,
     float,

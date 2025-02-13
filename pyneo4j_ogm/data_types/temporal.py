@@ -1,4 +1,4 @@
-from neo4j.time import Date, DateTime, Duration, Time
+import neo4j.time
 from pydantic import GetJsonSchemaHandler
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import core_schema
@@ -7,7 +7,7 @@ from typing_extensions import Annotated
 
 class NativeDateTimeAnnotation:
     """
-    Pydantic-compatible implementation of the Neo4j `DateTime` class.
+    Pydantic-compatible implementation of the Neo4j `neo4j.time.DateTime` class.
     """
 
     @classmethod
@@ -16,7 +16,7 @@ class NativeDateTimeAnnotation:
         from_iso_format_schema = core_schema.chain_schema(
             [
                 core_schema.str_schema(),
-                core_schema.no_info_plain_validator_function(DateTime.from_iso_format),
+                core_schema.no_info_plain_validator_function(neo4j.time.DateTime.from_iso_format),
             ]
         )
 
@@ -24,11 +24,11 @@ class NativeDateTimeAnnotation:
             json_schema=from_iso_format_schema,
             python_schema=core_schema.union_schema(
                 [
-                    core_schema.is_instance_schema(DateTime),
+                    core_schema.is_instance_schema(neo4j.time.DateTime),
                     core_schema.chain_schema(
                         [
                             core_schema.datetime_schema(),
-                            core_schema.no_info_plain_validator_function(DateTime.from_native),
+                            core_schema.no_info_plain_validator_function(neo4j.time.DateTime.from_native),
                         ]
                     ),
                     from_iso_format_schema,
@@ -46,7 +46,7 @@ class NativeDateTimeAnnotation:
 
 class NativeDateAnnotation:
     """
-    Pydantic-compatible implementation of the Neo4j `Date` class.
+    Pydantic-compatible implementation of the Neo4j `neo4j.time.Date` class.
     """
 
     @classmethod
@@ -54,7 +54,7 @@ class NativeDateAnnotation:
         from_iso_format_schema = core_schema.chain_schema(
             [
                 core_schema.str_schema(),
-                core_schema.no_info_plain_validator_function(Date.from_iso_format),
+                core_schema.no_info_plain_validator_function(neo4j.time.Date.from_iso_format),
             ]
         )
 
@@ -62,11 +62,11 @@ class NativeDateAnnotation:
             json_schema=from_iso_format_schema,
             python_schema=core_schema.union_schema(
                 [
-                    core_schema.is_instance_schema(Date),
+                    core_schema.is_instance_schema(neo4j.time.Date),
                     core_schema.chain_schema(
                         [
                             core_schema.date_schema(),
-                            core_schema.no_info_plain_validator_function(Date.from_native),
+                            core_schema.no_info_plain_validator_function(neo4j.time.Date.from_native),
                         ]
                     ),
                     from_iso_format_schema,
@@ -84,7 +84,7 @@ class NativeDateAnnotation:
 
 class NativeTimeAnnotation:
     """
-    Pydantic-compatible implementation of the Neo4j `Time` class.
+    Pydantic-compatible implementation of the Neo4j `neo4j.time.Time` class.
     """
 
     @classmethod
@@ -92,7 +92,7 @@ class NativeTimeAnnotation:
         from_iso_format_schema = core_schema.chain_schema(
             [
                 core_schema.str_schema(),
-                core_schema.no_info_plain_validator_function(Time.from_iso_format),
+                core_schema.no_info_plain_validator_function(neo4j.time.Time.from_iso_format),
             ]
         )
 
@@ -100,11 +100,11 @@ class NativeTimeAnnotation:
             json_schema=from_iso_format_schema,
             python_schema=core_schema.union_schema(
                 [
-                    core_schema.is_instance_schema(Time),
+                    core_schema.is_instance_schema(neo4j.time.Time),
                     core_schema.chain_schema(
                         [
                             core_schema.time_schema(),
-                            core_schema.no_info_plain_validator_function(Time.from_native),
+                            core_schema.no_info_plain_validator_function(neo4j.time.Time.from_native),
                         ]
                     ),
                     from_iso_format_schema,
@@ -122,7 +122,7 @@ class NativeTimeAnnotation:
 
 class NativeDurationAnnotation:
     """
-    Pydantic-compatible implementation of the Neo4j `Duration` class.
+    Pydantic-compatible implementation of the Neo4j `neo4j.time.Duration` class.
     """
 
     @classmethod
@@ -130,11 +130,13 @@ class NativeDurationAnnotation:
         from_iso_format_schema = core_schema.chain_schema(
             [
                 core_schema.str_schema(),
-                core_schema.no_info_plain_validator_function(Duration.from_iso_format),
+                core_schema.no_info_plain_validator_function(neo4j.time.Duration.from_iso_format),
             ]
         )
 
-        def serialize(val: Duration, _: core_schema.SerializerFunctionWrapHandler, info: core_schema.SerializationInfo):
+        def serialize(
+            val: neo4j.time.Duration, _: core_schema.SerializerFunctionWrapHandler, info: core_schema.SerializationInfo
+        ):
             if info.mode_is_json():
                 return val.iso_format()
 
@@ -145,7 +147,7 @@ class NativeDurationAnnotation:
             json_schema=from_iso_format_schema,
             python_schema=core_schema.union_schema(
                 [
-                    core_schema.is_instance_schema(Duration),
+                    core_schema.is_instance_schema(neo4j.time.Duration),
                     from_iso_format_schema,
                 ]
             ),
@@ -157,7 +159,7 @@ class NativeDurationAnnotation:
         return handler(core_schema.timedelta_schema())
 
 
-NativeDateTime = Annotated[DateTime, NativeDateTimeAnnotation]
-NativeDate = Annotated[Date, NativeDateAnnotation]
-NativeTime = Annotated[Time, NativeTimeAnnotation]
-NativeDuration = Annotated[Duration, NativeDurationAnnotation]
+NativeDateTime = Annotated[neo4j.time.DateTime, NativeDateTimeAnnotation]
+NativeDate = Annotated[neo4j.time.Date, NativeDateAnnotation]
+NativeTime = Annotated[neo4j.time.Time, NativeTimeAnnotation]
+NativeDuration = Annotated[neo4j.time.Duration, NativeDurationAnnotation]

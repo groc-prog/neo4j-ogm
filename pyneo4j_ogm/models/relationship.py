@@ -1,21 +1,21 @@
 from typing import ClassVar, Generic, Optional, Self, TypeVar, cast
 
-from neo4j.graph import Relationship
+import neo4j.graph
 from pydantic import PrivateAttr
 
 from pyneo4j_ogm.models.base import ModelBase
-from pyneo4j_ogm.models.node import NodeModel
+from pyneo4j_ogm.models.node import Node
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
     RelationshipConfig,
     ValidatedRelationshipConfiguration,
 )
 
-T = TypeVar("T", bound=NodeModel)
-U = TypeVar("U", bound=NodeModel)
+T = TypeVar("T", bound=Node)
+U = TypeVar("U", bound=Node)
 
 
-class RelationshipModel(ModelBase, Generic[T, U]):
+class Relationship(ModelBase, Generic[T, U]):
     """
     Base model for all relationship models. Every relationship model should inherit from this class to have needed base
     functionality like de-/inflation and validation.
@@ -58,15 +58,17 @@ class RelationshipModel(ModelBase, Generic[T, U]):
         return self._end_node
 
     @classmethod
-    def _inflate(cls, graph_entity: Relationship, start_node: Optional[T] = None, end_node: Optional[U] = None) -> Self:
+    def _inflate(
+        cls, graph_entity: neo4j.graph.Relationship, start_node: Optional[T] = None, end_node: Optional[U] = None
+    ) -> Self:
         """
         Inflates a graph entity from the Neo4j driver into the current model.
 
         Args:
-            graph_entity (Relationship): The graph relationship to inflate.
-            start_node (Optional[NodeModel]): The inflated node model. This should be the start node returned with
+            graph_entity (neo4j.graph.Relationship): The graph relationship to inflate.
+            start_node (Optional[Node]): The inflated node model. This should be the start node returned with
                 the relationship from the DB. Defaults to `None`.
-            end_node (Optional[NodeModel]): The inflated node model. This should be the end node returned with
+            end_node (Optional[Node]): The inflated node model. This should be the end node returned with
                 the relationship from the DB. Defaults to `None`.
 
         Returns:

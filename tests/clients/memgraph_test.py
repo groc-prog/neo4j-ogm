@@ -1,15 +1,14 @@
 # pylint: disable=missing-class-docstring, redefined-outer-name, unused-import, unused-argument, broad-exception-raised, line-too-long
 
 import asyncio
-from datetime import date
 from os import path
 from typing import Any, Dict, List, Union
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import neo4j
+import neo4j.exceptions
 import neo4j.graph
 import pytest
-from neo4j.exceptions import ClientError
 from pydantic import BaseModel
 from typing_extensions import Annotated
 
@@ -20,9 +19,9 @@ from pyneo4j_ogm.exceptions import (
     ModelResolveError,
     NoTransactionInProgressError,
 )
-from pyneo4j_ogm.models.node import NodeModel
-from pyneo4j_ogm.models.path import PathContainer
-from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.models.node import Node
+from pyneo4j_ogm.models.path import Path
+from pyneo4j_ogm.models.relationship import Relationship
 from pyneo4j_ogm.options.field_options import (
     DataTypeConstraint,
     ExistenceConstraint,
@@ -111,7 +110,7 @@ class TestMemgraphConnection:
             await client.connect("bolt://invalid-connection:9999")
 
     async def test_raises_on_invalid_auth(self):
-        with pytest.raises(ClientError):
+        with pytest.raises(neo4j.exceptions.ClientError):
             client = MemgraphClient()
             await client.connect(ConnectionString.MEMGRAPH.value)
 
@@ -853,12 +852,12 @@ class TestMemgraphQueries:
 
     class TestMemgraphResolvingModels:
         async def test_resolves_model_correctly(self, memgraph_client, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -907,12 +906,12 @@ class TestMemgraphQueries:
             assert results[0][2].close_friend == related["close_friend"]
 
         async def test_uses_cached_resolved_models(self, memgraph_client, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -945,12 +944,12 @@ class TestMemgraphQueries:
                     assert related_spy.call_count == 1
 
         async def test_resolve_nested_structures(self, memgraph_client, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -1000,12 +999,12 @@ class TestMemgraphQueries:
                 await memgraph_client.cypher("MATCH ()-[r]->() RETURN r")
 
         async def test_resolves_paths_correctly(self, memgraph_client, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -1032,7 +1031,7 @@ class TestMemgraphQueries:
             results, _ = await memgraph_client.cypher("MATCH path=(n)-[r]->(m) RETURN path")
 
             assert len(results[0]) == 1
-            assert isinstance(results[0][0], PathContainer)
+            assert isinstance(results[0][0], Path)
             assert results[0][0].graph is not None
             assert isinstance(results[0][0].start_node, Person)
             assert isinstance(results[0][0].end_node, Person)
@@ -1040,12 +1039,12 @@ class TestMemgraphQueries:
             assert all(isinstance(relationship, Related) for relationship in results[0][0].relationships)
 
         async def test_resolves_relationship_start_and_end_nodes_correctly(self, memgraph_client, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -1071,7 +1070,7 @@ class TestMemgraphQueries:
             await memgraph_client.register_models(Person, Related)
             results, _ = await memgraph_client.cypher("MATCH (n)-[r]->(m) RETURN r, n, m")
 
-            assert isinstance(results[0][0], RelationshipModel)
+            assert isinstance(results[0][0], Relationship)
             assert isinstance(results[0][0].start_node, Person)
             assert results[0][0].start_node.element_id == results[0][1].element_id
             assert isinstance(results[0][0].end_node, Person)
@@ -1080,12 +1079,12 @@ class TestMemgraphQueries:
         async def test_does_not_resolve_start_and_end_node_if_not_returned_from_query(
             self, memgraph_client, memgraph_session
         ):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -1111,7 +1110,7 @@ class TestMemgraphQueries:
             await memgraph_client.register_models(Person, Related)
             results, _ = await memgraph_client.cypher("MATCH ()-[r]->() RETURN r")
 
-            assert isinstance(results[0][0], RelationshipModel)
+            assert isinstance(results[0][0], Relationship)
             assert results[0][0].start_node is None
             assert results[0][0].end_node is None
 
@@ -1124,7 +1123,7 @@ class TestMemgraphQueries:
             deeply_nested_items: List[DeeplyNested]
             deeply_nested_once: DeeplyNested
 
-        class Person(NodeModel):
+        class Person(Node):
             nested: Nested
             id_: int
 
@@ -1157,7 +1156,7 @@ class TestMemgraphQueries:
         assert results[0][0].nested.deeply_nested_items[1].nested_count == 4
 
     async def test_resolves_non_homogeneous_lists(self, memgraph_client, memgraph_session):
-        class RandomList(NodeModel):
+        class RandomList(Node):
             items: Union[str, int, bool, Dict[str, Any], List[Any]]
 
         query = await memgraph_session.run(
@@ -1179,7 +1178,7 @@ class TestMemgraphQueries:
         assert results[0][0].items[4] == [True, 4, 5.1]
 
     async def test_raises_on_failed_node_inflate(self, memgraph_client, memgraph_session):
-        class Person(NodeModel):
+        class Person(Node):
             id_: int
 
         query = await memgraph_session.run(
@@ -1195,10 +1194,10 @@ class TestMemgraphQueries:
                 await memgraph_client.cypher("MATCH (n:Person) RETURN n")
 
     async def test_raises_on_failed_relationship_inflate(self, memgraph_client, memgraph_session):
-        class Person(NodeModel):
+        class Person(Node):
             id_: int
 
-        class Knows(RelationshipModel):
+        class Knows(Relationship):
             status: str
 
         query = await memgraph_session.run(
@@ -1214,10 +1213,10 @@ class TestMemgraphQueries:
                 await memgraph_client.cypher("MATCH ()-[r:KNOWS]->() RETURN r")
 
     async def test_raises_on_failed_relationship_start_or_end_node_inflate(self, memgraph_client, memgraph_session):
-        class Person(NodeModel):
+        class Person(Node):
             id_: int
 
-        class Knows(RelationshipModel):
+        class Knows(Relationship):
             status: str
 
         query = await memgraph_session.run(
@@ -1233,10 +1232,10 @@ class TestMemgraphQueries:
                 await memgraph_client.cypher("MATCH (n)-[r:KNOWS]->(m) RETURN r, n, m")
 
     async def test_raises_on_failed_path_node_inflate(self, memgraph_client, memgraph_session):
-        class Person(NodeModel):
+        class Person(Node):
             id_: int
 
-        class Knows(RelationshipModel):
+        class Knows(Relationship):
             status: str
 
         query = await memgraph_session.run(
@@ -1252,10 +1251,10 @@ class TestMemgraphQueries:
                 await memgraph_client.cypher("MATCH path=(:Person)-[:KNOWS]->(:Person) RETURN path")
 
     async def test_raises_on_failed_path_relationship_inflate(self, memgraph_client, memgraph_session):
-        class Person(NodeModel):
+        class Person(Node):
             id_: int
 
-        class Knows(RelationshipModel):
+        class Knows(Relationship):
             status: str
 
         query = await memgraph_session.run(
@@ -1273,10 +1272,10 @@ class TestMemgraphQueries:
 
 class TestMemgraphModelInitialization:
     async def test_skips_initialization_if_all_client_skips_defined(self, memgraph_session):
-        class Person(NodeModel):
+        class Person(Node):
             uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
 
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
 
         client = MemgraphClient()
@@ -1301,12 +1300,12 @@ class TestMemgraphModelInitialization:
         assert len(indexes) == 0
 
     async def test_skips_initialization_if_all_model_skips_defined(self, memgraph_session):
-        class Person(NodeModel):
+        class Person(Node):
             uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
 
             ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
 
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             uid: Annotated[str, UniquenessConstraint(), PropertyIndex()]
 
             ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
@@ -1329,10 +1328,10 @@ class TestMemgraphModelInitialization:
 
     class TestMemgraphUniquenessConstraint:
         async def test_model_registration_with_client_skipped_constraints(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, UniquenessConstraint()]
 
             client = MemgraphClient()
@@ -1348,12 +1347,12 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_model_skipped_constraints(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, UniquenessConstraint()]
 
                 ogm_config = {"skip_constraint_creation": True}
@@ -1369,10 +1368,10 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_uniqueness_constraint(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, UniquenessConstraint()]
 
             client = MemgraphClient()
@@ -1403,7 +1402,7 @@ class TestMemgraphModelInitialization:
                 assert constraints[1][2] == ["uid"]
 
         async def test_model_registration_with_uniqueness_constraint_multi_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1422,7 +1421,7 @@ class TestMemgraphModelInitialization:
             assert constraints[0][2] == ["uid"]
 
         async def test_model_registration_with_uniqueness_constraint_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1441,7 +1440,7 @@ class TestMemgraphModelInitialization:
             assert constraints[0][2] == ["uid"]
 
         async def test_model_registration_with_uniqueness_constraint_invalid_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1458,7 +1457,7 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_multiple_uniqueness_constraint(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
                 age: Annotated[int, UniquenessConstraint()]
 
@@ -1492,7 +1491,7 @@ class TestMemgraphModelInitialization:
                 assert constraints[1][2] == ["uid"]
 
         async def test_model_registration_with_multiple_uniqueness_constraint_specified_labels(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(specified_label="Human")]
                 age: Annotated[int, UniquenessConstraint(specified_label="Person")]
 
@@ -1528,7 +1527,7 @@ class TestMemgraphModelInitialization:
         async def test_model_registration_with_multiple_uniqueness_constraint_invalid_composite_key(
             self, memgraph_session
         ):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(specified_label="Human", composite_key="key")]
                 age: Annotated[int, UniquenessConstraint(specified_label="Person", composite_key="key")]
 
@@ -1546,7 +1545,7 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_multiple_uniqueness_constraint_composite_key(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(composite_key="key")]
                 age: Annotated[int, UniquenessConstraint(composite_key="key")]
 
@@ -1568,10 +1567,10 @@ class TestMemgraphModelInitialization:
 
     class TestMemgraphExistenceConstraint:
         async def test_model_registration_with_client_skipped_constraints(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, ExistenceConstraint()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, ExistenceConstraint()]
 
             client = MemgraphClient()
@@ -1587,12 +1586,12 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_model_skipped_constraints(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, ExistenceConstraint()]
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, ExistenceConstraint()]
 
                 ogm_config = {"skip_constraint_creation": True}
@@ -1608,10 +1607,10 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_existence_constraint(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, ExistenceConstraint()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, ExistenceConstraint()]
 
             client = MemgraphClient()
@@ -1642,7 +1641,7 @@ class TestMemgraphModelInitialization:
                 assert constraints[1][2] == "uid"
 
         async def test_model_registration_with_existence_constraint_multi_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, ExistenceConstraint()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1661,7 +1660,7 @@ class TestMemgraphModelInitialization:
             assert constraints[0][2] == "uid"
 
         async def test_model_registration_with_existence_constraint_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, ExistenceConstraint(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1680,7 +1679,7 @@ class TestMemgraphModelInitialization:
             assert constraints[0][2] == "uid"
 
         async def test_model_registration_with_existence_constraint_invalid_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, ExistenceConstraint(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1697,7 +1696,7 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_multiple_existence_constraint(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, ExistenceConstraint()]
                 age: Annotated[int, ExistenceConstraint()]
 
@@ -1731,7 +1730,7 @@ class TestMemgraphModelInitialization:
                 assert constraints[1][2] == "uid"
 
         async def test_model_registration_with_multiple_existence_constraint_specified_labels(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, ExistenceConstraint(specified_label="Human")]
                 age: Annotated[int, ExistenceConstraint(specified_label="Person")]
 
@@ -1766,10 +1765,10 @@ class TestMemgraphModelInitialization:
 
     class TestMemgraphDataTypeConstraint:
         async def test_model_registration_with_client_skipped_constraints(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
             client = MemgraphClient()
@@ -1785,12 +1784,12 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_model_skipped_constraints(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
                 ogm_config = {"skip_constraint_creation": True}
@@ -1806,10 +1805,10 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_data_type_constraint(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
             client = MemgraphClient()
@@ -1844,7 +1843,7 @@ class TestMemgraphModelInitialization:
                 assert constraints[1][3] == "STRING"
 
         async def test_model_registration_with_data_type_constraint_multi_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1864,7 +1863,7 @@ class TestMemgraphModelInitialization:
             assert constraints[0][3] == "STRING"
 
         async def test_model_registration_with_data_type_constraint_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING, specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1884,7 +1883,7 @@ class TestMemgraphModelInitialization:
             assert constraints[0][3] == "STRING"
 
         async def test_model_registration_with_data_type_constraint_invalid_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING, specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1901,7 +1900,7 @@ class TestMemgraphModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_multiple_data_type_constraint(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING)]
                 age: Annotated[int, DataTypeConstraint(data_type=MemgraphDataType.INTEGER)]
 
@@ -1939,7 +1938,7 @@ class TestMemgraphModelInitialization:
                 assert constraints[1][3] == "STRING"
 
         async def test_model_registration_with_multiple_data_type_constraint_specified_labels(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, DataTypeConstraint(data_type=MemgraphDataType.STRING, specified_label="Human")]
                 age: Annotated[int, DataTypeConstraint(data_type=MemgraphDataType.INTEGER, specified_label="Person")]
 
@@ -1978,10 +1977,10 @@ class TestMemgraphModelInitialization:
 
     class TestMemgraphPropertyIndex:
         async def test_model_registration_with_client_skipped_indexes(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PropertyIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PropertyIndex()]
 
             client = MemgraphClient()
@@ -1995,12 +1994,12 @@ class TestMemgraphModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_model_skipped_indexes(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PropertyIndex()]
 
                 ogm_config = {"skip_index_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PropertyIndex()]
 
                 ogm_config = {"skip_index_creation": True}
@@ -2016,10 +2015,10 @@ class TestMemgraphModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_property_index(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PropertyIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PropertyIndex()]
 
             client = MemgraphClient()
@@ -2050,7 +2049,7 @@ class TestMemgraphModelInitialization:
                 assert indexes[1][2] == "uid"
 
         async def test_model_registration_with_property_index_multi_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PropertyIndex()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2069,7 +2068,7 @@ class TestMemgraphModelInitialization:
             assert indexes[0][2] == "uid"
 
         async def test_model_registration_with_property_index_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PropertyIndex(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2088,7 +2087,7 @@ class TestMemgraphModelInitialization:
             assert indexes[0][2] == "uid"
 
         async def test_model_registration_with_property_index_invalid_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PropertyIndex(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2105,7 +2104,7 @@ class TestMemgraphModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_property_index(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PropertyIndex()]
                 age: Annotated[int, PropertyIndex()]
 
@@ -2139,7 +2138,7 @@ class TestMemgraphModelInitialization:
                 assert indexes[1][2] == "uid"
 
         async def test_model_registration_with_multiple_property_index_specified_labels(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PropertyIndex(specified_label="Human")]
                 age: Annotated[int, PropertyIndex(specified_label="Person")]
 
@@ -2174,10 +2173,10 @@ class TestMemgraphModelInitialization:
 
     class TestMemgraphPointIndex:
         async def test_model_registration_with_client_skipped_indexes(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PointIndex()]
 
             client = MemgraphClient()
@@ -2191,12 +2190,12 @@ class TestMemgraphModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_model_skipped_indexes(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
 
                 ogm_config = {"skip_index_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PointIndex()]
 
                 ogm_config = {"skip_index_creation": True}
@@ -2212,10 +2211,10 @@ class TestMemgraphModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_point_index(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PointIndex()]
 
             client = MemgraphClient()
@@ -2246,7 +2245,7 @@ class TestMemgraphModelInitialization:
                 assert indexes[1][2] == "uid"
 
         async def test_model_registration_with_point_index_multi_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2265,7 +2264,7 @@ class TestMemgraphModelInitialization:
             assert indexes[0][2] == "uid"
 
         async def test_model_registration_with_point_index_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2284,7 +2283,7 @@ class TestMemgraphModelInitialization:
             assert indexes[0][2] == "uid"
 
         async def test_model_registration_with_point_index_invalid_specified_label(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2301,7 +2300,7 @@ class TestMemgraphModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_point_index(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
                 age: Annotated[int, PointIndex()]
 
@@ -2335,7 +2334,7 @@ class TestMemgraphModelInitialization:
                 assert indexes[1][2] == "uid"
 
         async def test_model_registration_with_multiple_point_index_specified_labels(self, memgraph_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex(specified_label="Human")]
                 age: Annotated[int, PointIndex(specified_label="Person")]
 
@@ -2372,10 +2371,10 @@ class TestMemgraphModelInitialization:
 class TestMemgraphModelRegistration:
     class TestMemgraphRegisterModelClass:
         async def test_registers_model_classes(self, memgraph_client):
-            class Human(NodeModel):
+            class Human(Node):
                 ogm_config = {"labels": {"Human"}}
 
-            class HasEmotion(RelationshipModel):
+            class HasEmotion(Relationship):
                 ogm_config = {"type": "HAS_EMOTION"}
 
             await memgraph_client.register_models(Human, HasEmotion)
@@ -2384,30 +2383,30 @@ class TestMemgraphModelRegistration:
             assert len(memgraph_client._initialized_model_hashes) == 2
 
         async def test_raises_on_duplicate_node_model_registration(self, memgraph_client):
-            class HumanOne(NodeModel):
+            class HumanOne(Node):
                 ogm_config = {"labels": {"Human"}}
 
-            class HumanTwo(NodeModel):
+            class HumanTwo(Node):
                 ogm_config = {"labels": {"Human"}}
 
             with pytest.raises(DuplicateModelError):
                 await memgraph_client.register_models(HumanOne, HumanTwo)
 
         async def test_raises_on_duplicate_multi_label_node_model_registration(self, memgraph_client):
-            class HumanOne(NodeModel):
+            class HumanOne(Node):
                 ogm_config = {"labels": {"Human", "Special"}}
 
-            class HumanTwo(NodeModel):
+            class HumanTwo(Node):
                 ogm_config = {"labels": {"Human", "Special"}}
 
             with pytest.raises(DuplicateModelError):
                 await memgraph_client.register_models(HumanOne, HumanTwo)
 
         async def test_raises_on_duplicate_relationship_model_registration(self, memgraph_client):
-            class HasEmotionOne(RelationshipModel):
+            class HasEmotionOne(Relationship):
                 ogm_config = {"type": "HAS_EMOTION"}
 
-            class HasEmotionTwo(RelationshipModel):
+            class HasEmotionTwo(Relationship):
                 ogm_config = {"type": "HAS_EMOTION"}
 
             with pytest.raises(DuplicateModelError):

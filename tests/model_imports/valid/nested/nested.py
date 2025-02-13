@@ -1,14 +1,14 @@
-from pyneo4j_ogm.models.node import NodeModel
-from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.models.node import Node
+from pyneo4j_ogm.models.relationship import Relationship
 
 
 class NotAModelEither:
     pass
 
 
-class NestedNodeModel(NodeModel):
+class NestedNodeModel(Node):
     pass
 
 
-class NestedRelationshipModel(RelationshipModel):
+class NestedRelationshipModel(Relationship):
     pass

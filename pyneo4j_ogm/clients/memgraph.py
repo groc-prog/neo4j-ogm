@@ -2,12 +2,12 @@ import re
 from typing import Dict, List, Optional, Type, TypedDict, Union, cast
 from uuid import uuid4
 
-from neo4j.exceptions import ClientError
+import neo4j.exceptions
 
 from pyneo4j_ogm.clients.base import Pyneo4jClient, ensure_initialized
 from pyneo4j_ogm.logger import logger
-from pyneo4j_ogm.models.node import NodeModel
-from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.models.node import Node
+from pyneo4j_ogm.models.relationship import Relationship
 from pyneo4j_ogm.options.field_options import (
     DataTypeConstraint,
     ExistenceConstraint,
@@ -147,7 +147,7 @@ class MemgraphClient(Pyneo4jClient):
             data_type (MemgraphDataType): The data type to enforce.
 
         Raises:
-            ClientError: If a data type constraint already exists on the label-property pair.
+            neo4j.exceptions.ClientError: If a data type constraint already exists on the label-property pair.
         """
         logger.info("Creating data type constraint on %s for type %s", label, data_type.value)
         node_pattern = QueryBuilder.build_node_pattern("n", label)
@@ -163,7 +163,7 @@ class MemgraphClient(Pyneo4jClient):
         except Exception as exc:
             pattern = r"^Constraint IS TYPED \S+ on :\S+\(.*?\) already exists$"
             if not (
-                isinstance(exc, ClientError)
+                isinstance(exc, neo4j.exceptions.ClientError)
                 and exc.code == "Memgraph.ClientError.MemgraphError.MemgraphError"
                 and exc.message is not None
                 and re.match(pattern, exc.message)
@@ -243,7 +243,7 @@ class MemgraphClient(Pyneo4jClient):
 
         for model_hash in registered_hashes.difference(self._initialized_model_hashes):
             model = self._registered_models[model_hash]
-            entity_type = EntityType.NODE if issubclass(model, NodeModel) else EntityType.RELATIONSHIP
+            entity_type = EntityType.NODE if issubclass(model, Node) else EntityType.RELATIONSHIP
 
             if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
                 self._skip_index_creation and self._skip_constraint_creation
@@ -293,7 +293,7 @@ class MemgraphClient(Pyneo4jClient):
 
     def __generate_options_mapping(
         self,
-        model: Union[Type[NodeModel], Type[RelationshipModel]],
+        model: Union[Type[Node], Type[Relationship]],
         field_name: str,
         options: List[Union[UniquenessConstraint, PointIndex, PropertyIndex, DataTypeConstraint, ExistenceConstraint]],
         mapping: ModelInitializationMapping,
@@ -306,8 +306,8 @@ class MemgraphClient(Pyneo4jClient):
         relationship models, handling properties like composite keys, data types, and labels.
 
         Args:
-            model (Union[Type[NodeModel], Type[RelationshipModel]]): The model class to which the field belongs.
-                Must be a subclass of either `NodeModel` or `RelationshipModel`.
+            model (Union[Type[Node], Type[Relationship]]): The model class to which the field belongs.
+                Must be a subclass of either `Node` or `Relationship`.
             field_name (str): The name of the field to which the options apply.
             options (List[Union[UniquenessConstraint, PointIndex, PropertyIndex, DataTypeConstraint, ExistenceConstraint]]):
                 A list of options specifying constraints or indexes to be applied to the field.
@@ -318,7 +318,7 @@ class MemgraphClient(Pyneo4jClient):
             ValueError: If multiple conflicting data types are defined for a field with a `DataTypeConstraint`.
             ValueError: If conflicting labels or types are provided for a composite key.
         """
-        is_node_model = issubclass(model, NodeModel)
+        is_node_model = issubclass(model, Node)
 
         for option in options:
             has_composite_key = getattr(option, "composite_key", None) is not None

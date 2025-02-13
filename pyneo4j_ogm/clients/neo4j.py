@@ -3,7 +3,7 @@ from functools import wraps
 from typing import Dict, List, Optional, Type, TypedDict, Union, cast
 from uuid import uuid4
 
-from neo4j import AsyncDriver
+import neo4j
 
 from pyneo4j_ogm.clients.base import Pyneo4jClient, ensure_initialized
 from pyneo4j_ogm.exceptions import (
@@ -11,8 +11,8 @@ from pyneo4j_ogm.exceptions import (
     UnsupportedDatabaseVersionError,
 )
 from pyneo4j_ogm.logger import logger
-from pyneo4j_ogm.models.node import NodeModel
-from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.models.node import Node
+from pyneo4j_ogm.models.relationship import Relationship
 from pyneo4j_ogm.options.field_options import (
     FullTextIndex,
     PointIndex,
@@ -358,7 +358,7 @@ class Neo4jClient(Pyneo4jClient):
     @ensure_initialized
     async def _check_database_version(self) -> None:
         logger.debug("Checking if Neo4j version is supported")
-        server_info = await cast(AsyncDriver, self._driver).get_server_info()
+        server_info = await cast(neo4j.AsyncDriver, self._driver).get_server_info()
 
         version = server_info.agent.split("/")[1]
         self._version = version
@@ -372,7 +372,7 @@ class Neo4jClient(Pyneo4jClient):
 
         for model_hash in registered_hashes.difference(self._initialized_model_hashes):
             model = self._registered_models[model_hash]
-            entity_type = EntityType.NODE if issubclass(model, NodeModel) else EntityType.RELATIONSHIP
+            entity_type = EntityType.NODE if issubclass(model, Node) else EntityType.RELATIONSHIP
 
             if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
                 self._skip_constraint_creation and self._skip_index_creation
@@ -441,7 +441,7 @@ class Neo4jClient(Pyneo4jClient):
 
     def __generate_options_mapping(
         self,
-        model: Union[Type[NodeModel], Type[RelationshipModel]],
+        model: Union[Type[Node], Type[Relationship]],
         field_name: str,
         options: List[Union[UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex]],
         mapping: ModelInitializationMapping,
@@ -455,8 +455,8 @@ class Neo4jClient(Pyneo4jClient):
         are appropriately applied.
 
         Args:
-            model (Union[Type[NodeModel], Type[RelationshipModel]]): The model class to which the field belongs.
-                Must be a subclass of either `NodeModel` or `RelationshipModel`.
+            model (Union[Type[Node], Type[Relationship]]): The model class to which the field belongs.
+                Must be a subclass of either `Node` or `Relationship`.
             field_name (str): The name of the field to which the options apply.
             options (List[Union[UniquenessConstraint, RangeIndex, TextIndex, PointIndex, VectorIndex, FullTextIndex]]):
                 A list of options specifying constraints or indexes to be applied to the field.
@@ -466,7 +466,7 @@ class Neo4jClient(Pyneo4jClient):
             ValueError: If a specified label for an option is not valid for the given model.
             ValueError: If conflicting labels are provided for a composite key.
         """
-        is_node_model = issubclass(model, NodeModel)
+        is_node_model = issubclass(model, Node)
 
         for option in options:
             has_composite_key = getattr(option, "composite_key", None) is not None

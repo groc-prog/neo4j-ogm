@@ -22,8 +22,8 @@ from typing import (
     cast,
 )
 
-from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession, AsyncTransaction, Query
-from neo4j.graph import Node, Path, Relationship
+import neo4j
+import neo4j.graph
 
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
@@ -33,17 +33,17 @@ from pyneo4j_ogm.exceptions import (
     Pyneo4jOrmError,
 )
 from pyneo4j_ogm.logger import logger
-from pyneo4j_ogm.models.node import NodeModel
-from pyneo4j_ogm.models.path import PathContainer
-from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.models.node import Node
+from pyneo4j_ogm.models.path import Path
+from pyneo4j_ogm.models.relationship import Relationship
 from pyneo4j_ogm.options.model_options import ValidatedNodeConfiguration
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.registry import Registry
 
 
 class ResolvedModelsCache(TypedDict):
-    nodes: Dict[str, NodeModel]
-    relationships: Dict[str, RelationshipModel]
+    nodes: Dict[str, Node]
+    relationships: Dict[str, Relationship]
 
 
 def initialize_models_after(func):
@@ -117,11 +117,11 @@ class Pyneo4jClient(ABC):
 
     _uri: Optional[str]
     _registry: Registry = Registry()
-    _driver: Optional[AsyncDriver]
-    _session: Optional[AsyncSession]
-    _transaction: Optional[AsyncTransaction]
+    _driver: Optional[neo4j.AsyncDriver]
+    _session: Optional[neo4j.AsyncSession]
+    _transaction: Optional[neo4j.AsyncTransaction]
     _initialized_model_hashes: Set[str]
-    _registered_models: Dict[str, Union[Type[NodeModel], Type[RelationshipModel]]]
+    _registered_models: Dict[str, Union[Type[Node], Type[Relationship]]]
     _using_batching: bool
     _skip_constraint_creation: bool
     _skip_index_creation: bool
@@ -222,7 +222,7 @@ class Pyneo4jClient(ABC):
         self._skip_index_creation = skip_indexes
 
         logger.info("Connecting to database %s", uri)
-        self._driver = AsyncGraphDatabase.driver(uri=uri, *args, **kwargs)
+        self._driver = neo4j.AsyncGraphDatabase.driver(uri=uri, *args, **kwargs)
 
         logger.debug("Checking connectivity and authentication")
         await self._driver.verify_connectivity()
@@ -237,7 +237,7 @@ class Pyneo4jClient(ABC):
         Closes the connection to the database.
         """
         logger.info("Closing database connection to %s", self._uri)
-        await cast(AsyncDriver, self._driver).close()
+        await cast(neo4j.AsyncDriver, self._driver).close()
 
         logger.info("Connection to database %s closed", self._uri)
         self._driver = None
@@ -246,7 +246,7 @@ class Pyneo4jClient(ABC):
     @ensure_initialized
     async def cypher(
         self,
-        query: Union[str, LiteralString, Query],
+        query: Union[str, LiteralString, neo4j.Query],
         parameters: Optional[Dict[str, Any]] = None,
         auto_committing: bool = False,
         resolve_models: bool = True,
@@ -264,7 +264,7 @@ class Pyneo4jClient(ABC):
         when using `batching`.
 
         Args:
-            query (Union[str, LiteralString, Query]): Neo4j Query class or query string. Same as queries
+            query (Union[str, LiteralString, neo4j.Query]): Neo4j uery class or query string. Same as queries
                 for the Neo4j driver.
             parameters (Optional[Dict[str, Any]]): Optional parameters used by the query. Same as parameters
                 for the Neo4j driver. Defaults to `None`.
@@ -288,20 +288,20 @@ class Pyneo4jClient(ABC):
             return await self.__with_implicit_transaction(query, query_parameters, resolve_models)
 
     @initialize_models_after
-    async def register_models(self, *args: Union[Type[NodeModel], Type[RelationshipModel]]) -> None:
+    async def register_models(self, *args: Union[Type[Node], Type[Relationship]]) -> None:
         """
         Registers the provided models with the client. Can be omitted if automatic index/constraint creation
         and resolving models in queries is not required.
 
         Args:
-            models (List[Union[Type[NodeModel], Type[RelationshipModel]]]): The models to register. Invalid model
+            models (List[Union[Type[Node], Type[Relationship]]]): The models to register. Invalid model
                 instances will be skipped during the registration.
         """
         logger.debug("Registering models with client")
         original_count = len(self._registered_models)
 
         for model in args:
-            if not issubclass(model, (NodeModel, RelationshipModel)):
+            if not issubclass(model, (Node, Relationship)):
                 continue
 
             labels_or_type = (
@@ -355,9 +355,9 @@ class Pyneo4jClient(ABC):
                 for _, model in inspect.getmembers(
                     module,
                     lambda x: inspect.isclass(x)
-                    and issubclass(x, (NodeModel, RelationshipModel))
-                    and x is not NodeModel
-                    and x is not RelationshipModel,
+                    and issubclass(x, (Node, Relationship))
+                    and x is not Node
+                    and x is not Relationship,
                 ):
                     labels_or_type = (
                         model._ogm_config.labels
@@ -435,16 +435,16 @@ class Pyneo4jClient(ABC):
         return hashlib.sha256(combined.encode()).hexdigest()
 
     @ensure_initialized
-    async def __begin_transaction(self) -> Tuple[AsyncSession, AsyncTransaction]:
+    async def __begin_transaction(self) -> Tuple[neo4j.AsyncSession, neo4j.AsyncTransaction]:
         """
         Checks for existing sessions/transactions and begins new ones if none exist.
 
         Returns:
-            Tuple[AsyncSession, AsyncTransaction]: A tuple containing the acquired session and
+            Tuple[neo4j.AsyncSession, neo4j.AsyncTransaction]: A tuple containing the acquired session and
                 transaction.
         """
         logger.debug("Acquiring new session")
-        session = cast(AsyncDriver, self._driver).session()
+        session = cast(neo4j.AsyncDriver, self._driver).session()
         logger.debug("Session %s acquired", session)
 
         logger.debug("Acquiring new transaction for session %s", session)
@@ -455,14 +455,14 @@ class Pyneo4jClient(ABC):
 
     @ensure_initialized
     async def __commit_transaction(
-        self, session: Optional[AsyncSession], transaction: Optional[AsyncTransaction]
+        self, session: Optional[neo4j.AsyncSession], transaction: Optional[neo4j.AsyncTransaction]
     ) -> None:
         """
         Commits the current transaction and closes it.
 
         Args:
-            session (Optional[AsyncSession]): The session to commit.
-            transaction (Optional[AsyncTransaction]): The transaction to commit.
+            session (Optional[neo4j.AsyncSession]): The session to commit.
+            transaction (Optional[neo4j.AsyncTransaction]): The transaction to commit.
         """
         if session is None or transaction is None:
             raise NoTransactionInProgressError()
@@ -476,14 +476,14 @@ class Pyneo4jClient(ABC):
 
     @ensure_initialized
     async def __rollback_transaction(
-        self, session: Optional[AsyncSession], transaction: Optional[AsyncTransaction]
+        self, session: Optional[neo4j.AsyncSession], transaction: Optional[neo4j.AsyncTransaction]
     ) -> None:
         """
         Rolls the current transaction back and closes it.
 
         Args:
-            session (Optional[AsyncSession]): The session to commit.
-            transaction (Optional[AsyncTransaction]): The transaction to commit.
+            session (Optional[neo4j.AsyncSession]): The session to commit.
+            transaction (Optional[neo4j.AsyncTransaction]): The transaction to commit.
         """
         if session is None or transaction is None:
             raise NoTransactionInProgressError()
@@ -497,7 +497,7 @@ class Pyneo4jClient(ABC):
 
     async def __with_implicit_transaction(
         self,
-        query: Union[str, LiteralString, Query],
+        query: Union[str, LiteralString, neo4j.Query],
         parameters: Dict[str, Any],
         resolve_models: bool,
     ) -> Tuple[List[List[Any]], List[str]]:
@@ -506,7 +506,7 @@ class Pyneo4jClient(ABC):
         committing/rollbacks.
 
         Args:
-            query (Union[str, LiteralString, Query]): Neo4j Query class or query string. Same as queries
+            query (Union[str, LiteralString, neo4j.Query]): Neo4j query class or query string. Same as queries
                 for the Neo4j driver.
             parameters (Optional[Dict[str, Any]]): Optional parameters used by the query. Same as parameters
                 for the Neo4j driver. Defaults to `None`.
@@ -517,8 +517,8 @@ class Pyneo4jClient(ABC):
             Tuple[List[List[Any]], List[str]]: A tuple containing the query result and the names of the returned
                 variables.
         """
-        session: Optional[AsyncSession] = None
-        transaction: Optional[AsyncTransaction] = None
+        session: Optional[neo4j.AsyncSession] = None
+        transaction: Optional[neo4j.AsyncTransaction] = None
 
         if not self._using_batching:
             # If we are currently using batching, we should already be inside a active session/transaction
@@ -530,7 +530,7 @@ class Pyneo4jClient(ABC):
         try:
             logger.info("'%s' with parameters %s", query, parameters)
             query_start = perf_counter()
-            query_result = await cast(AsyncTransaction, transaction).run(cast(LiteralString, query), parameters)
+            query_result = await cast(neo4j.AsyncTransaction, transaction).run(cast(LiteralString, query), parameters)
             query_duration = (perf_counter() - query_start) * 1000
 
             logger.debug("Parsing query results")
@@ -545,7 +545,7 @@ class Pyneo4jClient(ABC):
                         results[list_index][index] = self.__resolve_graph_entity(result, cache)
 
             summary = await query_result.consume()
-            logger.info("Query finished after %dms", summary.result_available_after or query_duration)
+            logger.info("neo4j.Query finished after %dms", summary.result_available_after or query_duration)
 
             if not self._using_batching:
                 # Again, don't commit anything to the database when batching is enabled
@@ -553,7 +553,7 @@ class Pyneo4jClient(ABC):
 
             return results, keys
         except Exception as exc:
-            logger.error("Query exception: %s", exc)
+            logger.error("neo4j.Query exception: %s", exc)
 
             if not self._using_batching:
                 # Same as in the beginning, we don't want to roll back anything if we use batching
@@ -563,7 +563,7 @@ class Pyneo4jClient(ABC):
 
     async def __with_auto_committing_transaction(
         self,
-        query: Union[str, LiteralString, Query],
+        query: Union[str, LiteralString, neo4j.Query],
         parameters: Dict[str, Any],
         resolve_models: bool,
     ) -> Tuple[List[List[Any]], List[str]]:
@@ -573,7 +573,7 @@ class Pyneo4jClient(ABC):
         with info reporting (`SHOW INDEX INFO` for example).
 
         Args:
-            query (Union[str, LiteralString, Query]): Neo4j Query class or query string. Same as queries
+            query (Union[str, LiteralString, neo4j.Query]): Neo4j neo4j.Query class or query string. Same as queries
                 for the Neo4j driver.
             parameters (Optional[Dict[str, Any]]): Optional parameters used by the query. Same as parameters
                 for the Neo4j driver. Defaults to `None`.
@@ -586,7 +586,7 @@ class Pyneo4jClient(ABC):
         """
         try:
             logger.debug("Acquiring new session")
-            session = cast(AsyncDriver, self._driver).session()
+            session = cast(neo4j.AsyncDriver, self._driver).session()
             logger.debug("Session %s acquired", session)
 
             logger.info("'%s' with parameters %s", query, parameters)
@@ -606,7 +606,7 @@ class Pyneo4jClient(ABC):
                         results[list_index][index] = self.__resolve_graph_entity(result, cache)
 
             summary = await query_result.consume()
-            logger.info("Query finished after %dms", summary.result_available_after or query_duration)
+            logger.info("neo4j.Query finished after %dms", summary.result_available_after or query_duration)
 
             logger.debug("Closing session %s", session)
             await session.close()
@@ -614,7 +614,7 @@ class Pyneo4jClient(ABC):
 
             return results, keys
         except Exception as exc:
-            logger.error("Query exception: %s", exc)
+            logger.error("neo4j.Query exception: %s", exc)
             raise exc
 
     def __resolve_graph_entity(self, query_result: Any, cache: ResolvedModelsCache) -> Any:
@@ -630,11 +630,11 @@ class Pyneo4jClient(ABC):
         """
         resolved_result: Any
 
-        if isinstance(query_result, Node):
+        if isinstance(query_result, neo4j.graph.Node):
             resolved_result = self.__resolve_graph_node(query_result, cache)
-        elif isinstance(query_result, Relationship):
+        elif isinstance(query_result, neo4j.graph.Relationship):
             resolved_result = self.__resolve_graph_relationship(query_result, cache)
-        elif isinstance(query_result, Path):
+        elif isinstance(query_result, neo4j.graph.Path):
             resolved_result = self.__resolve_graph_path(query_result, cache)
         elif isinstance(query_result, list):
             resolved_result = []
@@ -652,12 +652,12 @@ class Pyneo4jClient(ABC):
 
         return resolved_result
 
-    def __resolve_graph_node(self, graph_node: Node, cached: ResolvedModelsCache) -> NodeModel:
+    def __resolve_graph_node(self, graph_node: neo4j.graph.Node, cached: ResolvedModelsCache) -> Node:
         """
-        Resolves the provided graph node to it's corresponding NodeModel instance.
+        Resolves the provided graph node to it's corresponding Node instance.
 
         Args:
-            graph_node (Node): The graph node to resolve.
+            graph_node (neo4j.graph.Node): The graph node to resolve.
             cached (ResolvedModelsCache): The cache of all already resolved models from the current result.
 
         Raises:
@@ -665,10 +665,10 @@ class Pyneo4jClient(ABC):
             ModelResolveError: If the model can not be inflated.
 
         Returns:
-            NodeModel: The resolved NodeModel instance of the graph node.
+            Node: The resolved Node instance of the graph node.
         """
         if graph_node.element_id in cached["nodes"]:
-            logger.debug("Node %s already resolved, using cached value", graph_node.element_id)
+            logger.debug("neo4j.graph.Node %s already resolved, using cached value", graph_node.element_id)
             return cached["nodes"][graph_node.element_id]
 
         logger.debug("Attempting to resolve model for graph node %s", graph_node.element_id)
@@ -683,9 +683,9 @@ class Pyneo4jClient(ABC):
             raise ModelResolveError(node_labels)
 
         try:
-            # We can be sure that this will be a instance of NodeModel since this should be ensured once the model
+            # We can be sure that this will be a instance of Node since this should be ensured once the model
             # is registered
-            model = cast(NodeModel, self._registered_models[model_hash])
+            model = cast(Node, self._registered_models[model_hash])
             inflated = model._inflate(graph_node)
 
             # Cache inflated model in case it has to be resolved multiple times
@@ -702,13 +702,13 @@ class Pyneo4jClient(ABC):
             raise ModelResolveError(node_labels) from exc
 
     def __resolve_graph_relationship(
-        self, graph_relationship: Relationship, cached: ResolvedModelsCache
-    ) -> RelationshipModel:
+        self, graph_relationship: neo4j.graph.Relationship, cached: ResolvedModelsCache
+    ) -> Relationship:
         """
-        Resolves the provided graph node to it's corresponding RelationshipModel instance.
+        Resolves the provided graph node to it's corresponding Relationship instance.
 
         Args:
-            graph_relationship (Relationship): The graph relationship to resolve.
+            graph_relationship (neo4j.graph.Relationship): The graph relationship to resolve.
             cached (ResolvedModelsCache): The cache of all already resolved models from the current result.
 
         Raises:
@@ -716,10 +716,12 @@ class Pyneo4jClient(ABC):
             ModelResolveError: If the model can not be inflated.
 
         Returns:
-            RelationshipModel: The resolved RelationshipModel instance of the graph relationship.
+            Relationship: The resolved Relationship instance of the graph relationship.
         """
         if graph_relationship.element_id in cached["relationships"]:
-            logger.debug("Relationship %s already resolved, using cached value", graph_relationship.element_id)
+            logger.debug(
+                "neo4j.graph.Relationship %s already resolved, using cached value", graph_relationship.element_id
+            )
             return cached["relationships"][graph_relationship.element_id]
 
         logger.debug("Attempting to resolve model for graph node %s", graph_relationship.element_id)
@@ -733,15 +735,15 @@ class Pyneo4jClient(ABC):
             raise ModelResolveError(graph_relationship.type)
 
         try:
-            # We can be sure that this will be a instance of RelationshipModel since this should be ensured once the model
+            # We can be sure that this will be a instance of Relationship since this should be ensured once the model
             # is registered
-            model = cast(RelationshipModel, self._registered_models[model_hash])
+            model = cast(Relationship, self._registered_models[model_hash])
             resolved_start_node = None
             resolved_end_node = None
 
             # If start and end node are also returned from the DB, we need to resolve them as well
             # This can fail depending on how the query is structure. For example, if we do not return the start/end node
-            # from the query in Memgraph, labels and properties will be missing on the `Relationship.start_node` property.
+            # from the query in Memgraph, labels and properties will be missing on the `neo4j.graph.Relationship.start_node` property.
             try:
                 if graph_relationship.start_node is not None:
                     resolved_start_node = self.__resolve_graph_node(graph_relationship.start_node, cached)
@@ -767,20 +769,20 @@ class Pyneo4jClient(ABC):
                 raise exc
             raise ModelResolveError(graph_relationship.type) from exc
 
-    def __resolve_graph_path(self, graph_path: Path, cached: ResolvedModelsCache) -> PathContainer:
+    def __resolve_graph_path(self, graph_path: neo4j.graph.Path, cached: ResolvedModelsCache) -> Path:
         """
         Resolves the provided graph path and it's nodes and relationships. If a single operation fails, a error will be raised.
 
         Args:
-            graph_path (Path): The graph path to resolve.
+            graph_path (neo4j.graph.Path): The graph path to resolve.
             cached (ResolvedModelsCache): The cache of all already resolved models from the current result.
 
         Returns:
-            PathContainer: A container class providing the same interface as the `Path` class from the neo4j driver.
+            Path: A container class providing the same interface as the `neo4j.graph.Path` class from the neo4j driver.
         """
         logger.debug("Attempting to resolve models for graph nodes and relationships in path")
-        nodes: List[NodeModel] = []
-        relationships: List[RelationshipModel] = []
+        nodes: List[Node] = []
+        relationships: List[Relationship] = []
 
         try:
             for node in graph_path.nodes:
@@ -791,7 +793,7 @@ class Pyneo4jClient(ABC):
                 resolved = self.__resolve_graph_relationship(relationship, cached)
                 relationships.append(resolved)
 
-            return PathContainer(tuple(nodes), tuple(relationships))
+            return Path(tuple(nodes), tuple(relationships))
         except Exception as exc:
             logger.error(
                 "Resolving graph path entities to model failed. Graph entities include incompatible data or is not retrievable.",

@@ -3,7 +3,7 @@ from abc import abstractmethod
 from copy import deepcopy
 from typing import Any, ClassVar, Dict, List, Optional, Self, Set, Union, cast
 
-from neo4j.graph import Graph, Node, Relationship
+import neo4j.graph
 from pydantic import (
     BaseModel,
     PrivateAttr,
@@ -32,7 +32,7 @@ class ModelBase(BaseModel):
     _id: Optional[int] = PrivateAttr(None)
     _element_id: Optional[str] = PrivateAttr(None)
 
-    _graph: Optional[Graph] = PrivateAttr()
+    _graph: Optional[neo4j.graph.Graph] = PrivateAttr()
     _registry: Registry = PrivateAttr()
     _ogm_config: ClassVar[Union[ValidatedNodeConfiguration, ValidatedRelationshipConfiguration]] = PrivateAttr()
 
@@ -107,7 +107,7 @@ class ModelBase(BaseModel):
         return self._id
 
     @property
-    def graph(self) -> Optional[Graph]:
+    def graph(self) -> Optional[neo4j.graph.Graph]:
         return self._graph
 
     @property
@@ -118,12 +118,12 @@ class ModelBase(BaseModel):
         return self._id is not None and self._element_id is not None
 
     @classmethod
-    def _inflate(cls, graph_entity: Union[Node, Relationship]) -> Self:
+    def _inflate(cls, graph_entity: Union[neo4j.graph.Node, neo4j.graph.Relationship]) -> Self:
         """
         Inflates a graph entity from the Neo4j driver into the current model.
 
         Args:
-            graph_entity (Union[Node, Relationship]): The graph entity to inflate.
+            graph_entity (Union[neo4j.graph.Node, neo4j.graph.Relationship]): The graph entity to inflate.
 
         Returns:
             Self: A inflated instance of the current model.

@@ -1,25 +1,25 @@
 # pylint: disable=missing-class-docstring
 
 
-from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.models.relationship import Relationship
 from pyneo4j_ogm.types.graph import EagerFetchStrategy
 
 
 class TestOGMConfiguration:
     def test_default_type(self):
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             pass
 
         assert Likes._ogm_config.type == "LIKES"  # type: ignore
 
     def test_custom_type(self):
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             ogm_config = {"type": "Loves"}
 
         assert Likes._ogm_config.type == "LOVES"  # type: ignore
 
     def test_type_inheritance(self):
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             pass
 
         class Hates(Likes):
@@ -32,7 +32,7 @@ class TestOGMConfiguration:
         def hook_func():
             pass
 
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             ogm_config = {"pre_hooks": {"create": hook_func}}
 
         assert Likes._ogm_config.pre_hooks == {"create": [hook_func]}  # type: ignore
@@ -44,7 +44,7 @@ class TestOGMConfiguration:
         def hook_func_two():
             pass
 
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             ogm_config = {"pre_hooks": {"create": [hook_func_one, hook_func_two]}}
 
         assert Likes._ogm_config.pre_hooks == {"create": [hook_func_one, hook_func_two]}  # type: ignore
@@ -53,7 +53,7 @@ class TestOGMConfiguration:
         def hook_func():
             pass
 
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             ogm_config = {"post_hooks": {"create": hook_func}}
 
         assert Likes._ogm_config.post_hooks == {"create": [hook_func]}  # type: ignore
@@ -65,13 +65,13 @@ class TestOGMConfiguration:
         def hook_func_two():
             pass
 
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             ogm_config = {"post_hooks": {"create": [hook_func_one, hook_func_two]}}
 
         assert Likes._ogm_config.post_hooks == {"create": [hook_func_one, hook_func_two]}  # type: ignore
 
     def test_primitive_config_options(self):
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             ogm_config = {
                 "skip_constraint_creation": True,
                 "skip_index_creation": True,

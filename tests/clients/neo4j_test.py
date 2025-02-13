@@ -4,13 +4,13 @@ import asyncio
 import json
 from os import path
 from types import SimpleNamespace
-from typing import Any, Dict, List, Union
+from typing import List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import neo4j
+import neo4j.exceptions
 import neo4j.graph
 import pytest
-from neo4j.exceptions import AuthError, ClientError
 from pydantic import BaseModel
 from typing_extensions import Annotated
 
@@ -23,9 +23,9 @@ from pyneo4j_ogm.exceptions import (
     NoTransactionInProgressError,
     UnsupportedDatabaseVersionError,
 )
-from pyneo4j_ogm.models.node import NodeModel
-from pyneo4j_ogm.models.path import PathContainer
-from pyneo4j_ogm.models.relationship import RelationshipModel
+from pyneo4j_ogm.models.node import Node
+from pyneo4j_ogm.models.path import Path
+from pyneo4j_ogm.models.relationship import Relationship
 from pyneo4j_ogm.options.field_options import (
     FullTextIndex,
     PointIndex,
@@ -214,7 +214,7 @@ class TestNeo4jConnection:
             await client.connect("bolt://invalid-connection:9999")
 
     async def test_raises_on_invalid_auth(self):
-        with pytest.raises(AuthError):
+        with pytest.raises(neo4j.exceptions.AuthError):
             client = Neo4jClient()
             await client.connect(ConnectionString.NEO4J.value)
 
@@ -296,7 +296,7 @@ class TestNeo4jConstraints:
             await check_no_constraints(neo4j_session)
             await neo4j_client.uniqueness_constraint("node_constraint", EntityType.NODE, "Person", "id", True)
 
-            with pytest.raises(ClientError):
+            with pytest.raises(neo4j.exceptions.ClientError):
                 await neo4j_client.uniqueness_constraint("node_constraint", EntityType.NODE, "Person", "id", True)
 
         async def test_relationship_uniqueness_constraint(self, neo4j_session, neo4j_client):
@@ -337,7 +337,7 @@ class TestNeo4jConstraints:
                 "relationship_constraint", EntityType.RELATIONSHIP, "Person", "id", True
             )
 
-            with pytest.raises(ClientError):
+            with pytest.raises(neo4j.exceptions.ClientError):
                 await neo4j_client.uniqueness_constraint(
                     "relationship_constraint", EntityType.RELATIONSHIP, "Person", "id", True
                 )
@@ -405,7 +405,7 @@ class TestNeo4jIndexes:
             await check_no_indexes(neo4j_session)
             await neo4j_client.range_index("range_index", EntityType.RELATIONSHIP, "Person", ["age", "id"])
 
-            with pytest.raises(ClientError):
+            with pytest.raises(neo4j.exceptions.ClientError):
                 await neo4j_client.range_index("range_index", EntityType.RELATIONSHIP, "Person", ["age", "id"], True)
 
     class TestNeo4jTextIndex:
@@ -441,7 +441,7 @@ class TestNeo4jIndexes:
             await check_no_indexes(neo4j_session)
             await neo4j_client.text_index("text_index", EntityType.RELATIONSHIP, "Person", "age")
 
-            with pytest.raises(ClientError):
+            with pytest.raises(neo4j.exceptions.ClientError):
                 await neo4j_client.text_index("text_index", EntityType.RELATIONSHIP, "Person", "age", True)
 
     class TestNeo4jPointIndex:
@@ -477,7 +477,7 @@ class TestNeo4jIndexes:
             await check_no_indexes(neo4j_session)
             await neo4j_client.point_index("point_index", EntityType.RELATIONSHIP, "Person", "age")
 
-            with pytest.raises(ClientError):
+            with pytest.raises(neo4j.exceptions.ClientError):
                 await neo4j_client.point_index("point_index", EntityType.RELATIONSHIP, "Person", "age", True)
 
     class TestNeo4jFulltextIndex:
@@ -569,7 +569,7 @@ class TestNeo4jIndexes:
             await check_no_indexes(neo4j_session)
             await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", "age")
 
-            with pytest.raises(ClientError):
+            with pytest.raises(neo4j.exceptions.ClientError):
                 await neo4j_client.fulltext_index("fulltext_index", EntityType.RELATIONSHIP, "Person", "age", True)
 
     class TestNeo4jVectorIndex:
@@ -605,7 +605,7 @@ class TestNeo4jIndexes:
             await check_no_indexes(neo4j_session)
             await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age")
 
-            with pytest.raises(ClientError):
+            with pytest.raises(neo4j.exceptions.ClientError):
                 await neo4j_client.vector_index("vector_index", EntityType.RELATIONSHIP, "Person", "age", True)
 
         async def test_vector_index_min_neo4j_version(self, neo4j_session, neo4j_client):
@@ -827,12 +827,12 @@ class TestNeo4jQueries:
 
     class TestNeo4jResolvingModels:
         async def test_resolves_model_correctly(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -881,12 +881,12 @@ class TestNeo4jQueries:
             assert results[0][2].close_friend == related["close_friend"]
 
         async def test_uses_cached_resolved_models(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -919,12 +919,12 @@ class TestNeo4jQueries:
                     assert related_spy.call_count == 1
 
         async def test_resolve_nested_structures(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -974,12 +974,12 @@ class TestNeo4jQueries:
                 await neo4j_client.cypher("MATCH ()-[r]->() RETURN r")
 
         async def test_resolves_paths_correctly(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -1006,7 +1006,7 @@ class TestNeo4jQueries:
             results, _ = await neo4j_client.cypher("MATCH path=(n)-[r]->(m) RETURN path")
 
             assert len(results[0]) == 1
-            assert isinstance(results[0][0], PathContainer)
+            assert isinstance(results[0][0], Path)
             assert results[0][0].graph is not None
             assert isinstance(results[0][0].start_node, Person)
             assert isinstance(results[0][0].end_node, Person)
@@ -1014,12 +1014,12 @@ class TestNeo4jQueries:
             assert all(isinstance(relationship, Related) for relationship in results[0][0].relationships)
 
         async def test_resolves_relationship_start_and_end_nodes_correctly(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -1045,7 +1045,7 @@ class TestNeo4jQueries:
             await neo4j_client.register_models(Person, Related)
             results, _ = await neo4j_client.cypher("MATCH (n)-[r]->(m) RETURN r, n, m")
 
-            assert isinstance(results[0][0], RelationshipModel)
+            assert isinstance(results[0][0], Relationship)
             assert isinstance(results[0][0].start_node, Person)
             assert results[0][0].start_node.element_id == results[0][1].element_id
             assert isinstance(results[0][0].end_node, Person)
@@ -1054,12 +1054,12 @@ class TestNeo4jQueries:
         async def test_does_not_resolve_start_and_end_node_if_not_returned_from_query(
             self, neo4j_client, neo4j_session
         ):
-            class Person(NodeModel):
+            class Person(Node):
                 age: int
                 name: str
                 is_happy: bool
 
-            class Related(RelationshipModel):
+            class Related(Relationship):
                 days_since: int
                 close_friend: bool
 
@@ -1085,7 +1085,7 @@ class TestNeo4jQueries:
             await neo4j_client.register_models(Person, Related)
             results, _ = await neo4j_client.cypher("MATCH ()-[r]->() RETURN r")
 
-            assert isinstance(results[0][0], RelationshipModel)
+            assert isinstance(results[0][0], Relationship)
             assert results[0][0].start_node is None
             assert results[0][0].end_node is None
 
@@ -1098,7 +1098,7 @@ class TestNeo4jQueries:
                 deeply_nested_items: List[DeeplyNested]
                 deeply_nested_once: DeeplyNested
 
-            class Person(NodeModel):
+            class Person(Node):
                 nested: Nested
                 id_: int
 
@@ -1136,7 +1136,7 @@ class TestNeo4jQueries:
             class Nested(BaseModel):
                 is_nested: bool
 
-            class Person(NodeModel):
+            class Person(Node):
                 nested: Nested
                 id_: int
 
@@ -1166,7 +1166,7 @@ class TestNeo4jQueries:
             class Nested(BaseModel):
                 is_nested: bool
 
-            class Person(NodeModel):
+            class Person(Node):
                 nested: Nested
                 id_: int
 
@@ -1192,10 +1192,10 @@ class TestNeo4jQueries:
             class Nested(BaseModel):
                 is_nested: bool
 
-            class Person(NodeModel):
+            class Person(Node):
                 nested: Nested
 
-            class Knows(RelationshipModel):
+            class Knows(Relationship):
                 pass
 
             query = await neo4j_session.run(
@@ -1214,7 +1214,7 @@ class TestNeo4jQueries:
                 await neo4j_client.cypher("MATCH (n:Person)-[r:KNOWS]->(m:Person) RETURN r, n, m")
 
         async def test_raises_on_failed_node_inflate(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 id_: int
 
             query = await neo4j_session.run(
@@ -1230,10 +1230,10 @@ class TestNeo4jQueries:
                     await neo4j_client.cypher("MATCH (n:Person) RETURN n")
 
         async def test_raises_on_failed_relationship_inflate(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 id_: int
 
-            class Knows(RelationshipModel):
+            class Knows(Relationship):
                 status: str
 
             query = await neo4j_session.run(
@@ -1249,10 +1249,10 @@ class TestNeo4jQueries:
                     await neo4j_client.cypher("MATCH ()-[r:KNOWS]->() RETURN r")
 
         async def test_raises_on_failed_relationship_start_or_end_node_inflate(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 id_: int
 
-            class Knows(RelationshipModel):
+            class Knows(Relationship):
                 status: str
 
             query = await neo4j_session.run(
@@ -1268,10 +1268,10 @@ class TestNeo4jQueries:
                     await neo4j_client.cypher("MATCH (n)-[r:KNOWS]->(m) RETURN r, n, m")
 
         async def test_raises_on_failed_path_node_inflate(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 id_: int
 
-            class Knows(RelationshipModel):
+            class Knows(Relationship):
                 status: str
 
             query = await neo4j_session.run(
@@ -1287,10 +1287,10 @@ class TestNeo4jQueries:
                     await neo4j_client.cypher("MATCH path=(:Person)-[:KNOWS]->(:Person) RETURN path")
 
         async def test_raises_on_failed_path_relationship_inflate(self, neo4j_client, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 id_: int
 
-            class Knows(RelationshipModel):
+            class Knows(Relationship):
                 status: str
 
             query = await neo4j_session.run(
@@ -1308,10 +1308,10 @@ class TestNeo4jQueries:
 
 class TestNeo4jModelInitialization:
     async def test_skips_initialization_if_all_client_skips_defined(self, neo4j_session):
-        class Person(NodeModel):
+        class Person(Node):
             uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
 
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
 
         client = Neo4jClient()
@@ -1333,12 +1333,12 @@ class TestNeo4jModelInitialization:
         assert len(indexes) == 0
 
     async def test_skips_initialization_if_all_model_skips_defined(self, neo4j_session):
-        class Person(NodeModel):
+        class Person(Node):
             uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
 
             ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
 
-        class Likes(RelationshipModel):
+        class Likes(Relationship):
             uid: Annotated[str, UniquenessConstraint(), RangeIndex()]
 
             ogm_config = {"skip_constraint_creation": True, "skip_index_creation": True}
@@ -1361,10 +1361,10 @@ class TestNeo4jModelInitialization:
 
     class TestNeo4jUniquenessConstraint:
         async def test_model_registration_with_client_skipped_constraints(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, UniquenessConstraint()]
 
             client = Neo4jClient()
@@ -1378,12 +1378,12 @@ class TestNeo4jModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_model_skipped_constraints(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, UniquenessConstraint()]
 
                 ogm_config = {"skip_constraint_creation": True}
@@ -1399,10 +1399,10 @@ class TestNeo4jModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_uniqueness_constraint(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, UniquenessConstraint()]
 
             client = Neo4jClient()
@@ -1426,7 +1426,7 @@ class TestNeo4jModelInitialization:
             assert constraints[1][5] == ["uid"]
 
         async def test_model_registration_with_uniqueness_constraint_multi_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1447,7 +1447,7 @@ class TestNeo4jModelInitialization:
             assert constraints[0][5] == ["uid"]
 
         async def test_model_registration_with_uniqueness_constraint_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1468,7 +1468,7 @@ class TestNeo4jModelInitialization:
             assert constraints[0][5] == ["uid"]
 
         async def test_model_registration_with_uniqueness_constraint_invalid_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1485,7 +1485,7 @@ class TestNeo4jModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_multiple_uniqueness_constraint(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint()]
                 age: Annotated[int, UniquenessConstraint()]
 
@@ -1512,7 +1512,7 @@ class TestNeo4jModelInitialization:
             assert constraints[1][5] == ["uid"]
 
         async def test_model_registration_with_multiple_uniqueness_constraint_specified_labels(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(specified_label="Human")]
                 age: Annotated[int, UniquenessConstraint(specified_label="Person")]
 
@@ -1541,7 +1541,7 @@ class TestNeo4jModelInitialization:
         async def test_model_registration_with_multiple_uniqueness_constraint_invalid_composite_key(
             self, neo4j_session
         ):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(specified_label="Human", composite_key="key")]
                 age: Annotated[int, UniquenessConstraint(specified_label="Person", composite_key="key")]
 
@@ -1559,7 +1559,7 @@ class TestNeo4jModelInitialization:
             assert len(constraints) == 0
 
         async def test_model_registration_with_multiple_uniqueness_constraint_composite_key(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, UniquenessConstraint(composite_key="key")]
                 age: Annotated[int, UniquenessConstraint(composite_key="key")]
 
@@ -1582,10 +1582,10 @@ class TestNeo4jModelInitialization:
 
     class TestNeo4jRangeIndex:
         async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, RangeIndex()]
 
             client = Neo4jClient()
@@ -1599,12 +1599,12 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex()]
 
                 ogm_config = {"skip_index_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, RangeIndex()]
 
                 ogm_config = {"skip_index_creation": True}
@@ -1620,10 +1620,10 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_range_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, RangeIndex()]
 
             client = Neo4jClient()
@@ -1647,7 +1647,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_range_index_multi_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1668,7 +1668,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_range_index_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1689,7 +1689,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_range_index_invalid_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1706,7 +1706,7 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_range_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex()]
                 age: Annotated[int, RangeIndex()]
 
@@ -1733,7 +1733,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_multiple_range_index_specified_labels(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex(specified_label="Human")]
                 age: Annotated[int, RangeIndex(specified_label="Person")]
 
@@ -1760,7 +1760,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["age"]
 
         async def test_model_registration_with_multiple_range_index_invalid_composite_key(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex(specified_label="Human", composite_key="key")]
                 age: Annotated[int, RangeIndex(specified_label="Person", composite_key="key")]
 
@@ -1778,7 +1778,7 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_range_index_composite_key(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, RangeIndex(composite_key="key")]
                 age: Annotated[int, RangeIndex(composite_key="key")]
 
@@ -1802,10 +1802,10 @@ class TestNeo4jModelInitialization:
 
     class TestNeo4jTextIndex:
         async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, TextIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, TextIndex()]
 
             client = Neo4jClient()
@@ -1819,12 +1819,12 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, TextIndex()]
 
                 ogm_config = {"skip_index_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, TextIndex()]
 
                 ogm_config = {"skip_index_creation": True}
@@ -1840,10 +1840,10 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_text_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, TextIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, TextIndex()]
 
             client = Neo4jClient()
@@ -1867,7 +1867,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_text_index_multi_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, TextIndex()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1888,7 +1888,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_text_index_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, TextIndex(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1909,7 +1909,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_text_index_invalid_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, TextIndex(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -1926,7 +1926,7 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_text_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, TextIndex()]
                 age: Annotated[int, TextIndex()]
 
@@ -1953,7 +1953,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_multiple_text_index_specified_labels(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, TextIndex(specified_label="Human")]
                 age: Annotated[int, TextIndex(specified_label="Person")]
 
@@ -1981,10 +1981,10 @@ class TestNeo4jModelInitialization:
 
     class TestNeo4jVectorIndex:
         async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, VectorIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, VectorIndex()]
 
             client = Neo4jClient()
@@ -1998,12 +1998,12 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, VectorIndex()]
 
                 ogm_config = {"skip_index_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, VectorIndex()]
 
                 ogm_config = {"skip_index_creation": True}
@@ -2019,10 +2019,10 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_vector_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, VectorIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, VectorIndex()]
 
             client = Neo4jClient()
@@ -2046,7 +2046,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_vector_index_multi_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, VectorIndex()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2067,7 +2067,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_vector_index_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, VectorIndex(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2088,7 +2088,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_vector_index_invalid_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, VectorIndex(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2105,7 +2105,7 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_vector_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, VectorIndex()]
                 age: Annotated[int, VectorIndex()]
 
@@ -2132,7 +2132,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_multiple_vector_index_specified_labels(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, VectorIndex(specified_label="Human")]
                 age: Annotated[int, VectorIndex(specified_label="Person")]
 
@@ -2160,10 +2160,10 @@ class TestNeo4jModelInitialization:
 
     class TestNeo4jPointIndex:
         async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PointIndex()]
 
             client = Neo4jClient()
@@ -2177,12 +2177,12 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
 
                 ogm_config = {"skip_index_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PointIndex()]
 
                 ogm_config = {"skip_index_creation": True}
@@ -2198,10 +2198,10 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_vector_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, PointIndex()]
 
             client = Neo4jClient()
@@ -2225,7 +2225,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_vector_index_multi_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2246,7 +2246,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_vector_index_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex(specified_label="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2267,7 +2267,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_vector_index_invalid_specified_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex(specified_label="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2284,7 +2284,7 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_vector_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex()]
                 age: Annotated[int, PointIndex()]
 
@@ -2311,7 +2311,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_multiple_vector_index_specified_labels(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, PointIndex(specified_label="Human")]
                 age: Annotated[int, PointIndex(specified_label="Person")]
 
@@ -2339,10 +2339,10 @@ class TestNeo4jModelInitialization:
 
     class TestNeo4jFullTextIndex:
         async def test_model_registration_with_client_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, FullTextIndex()]
 
             client = Neo4jClient()
@@ -2356,12 +2356,12 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_model_skipped_indexes(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex()]
 
                 ogm_config = {"skip_constraint_creation": True}
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, FullTextIndex()]
 
                 ogm_config = {"skip_constraint_creation": True}
@@ -2377,10 +2377,10 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_full_text_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex()]
 
-            class Likes(RelationshipModel):
+            class Likes(Relationship):
                 uid: Annotated[str, FullTextIndex()]
 
             client = Neo4jClient()
@@ -2404,7 +2404,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_full_text_index_multi_label(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex()]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2425,7 +2425,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_full_text_index_specified_labels_as_str(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex(specified_labels="Human")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2446,7 +2446,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_full_text_index_specified_labels_as_list(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex(specified_labels=["Human"])]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2467,7 +2467,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid"]
 
         async def test_model_registration_with_full_text_index_invalid_specified_labels(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex(specified_labels="Foo")]
 
                 ogm_config = {"labels": ["Person", "Human"]}
@@ -2484,7 +2484,7 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_full_text_index(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex()]
                 age: Annotated[int, FullTextIndex()]
 
@@ -2511,7 +2511,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["uid"]
 
         async def test_model_registration_with_multiple_full_text_index_specified_labels(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex(specified_labels="Human")]
                 age: Annotated[int, FullTextIndex(specified_labels="Person")]
 
@@ -2538,7 +2538,7 @@ class TestNeo4jModelInitialization:
             assert indexes[1][7] == ["age"]
 
         async def test_model_registration_with_multiple_full_text_index_invalid_composite_key(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex(specified_labels="Human", composite_key="key")]
                 age: Annotated[int, FullTextIndex(specified_labels="Person", composite_key="key")]
 
@@ -2556,7 +2556,7 @@ class TestNeo4jModelInitialization:
             assert len(indexes) == 0
 
         async def test_model_registration_with_multiple_full_text_index_composite_key(self, neo4j_session):
-            class Person(NodeModel):
+            class Person(Node):
                 uid: Annotated[str, FullTextIndex(composite_key="key")]
                 age: Annotated[int, FullTextIndex(composite_key="key")]
 
@@ -2581,10 +2581,10 @@ class TestNeo4jModelInitialization:
 class TestNeo4jModelRegistration:
     class TestNeo4jRegisterModelClass:
         async def test_registers_model_classes(self, neo4j_client):
-            class Human(NodeModel):
+            class Human(Node):
                 ogm_config = {"labels": {"Human"}}
 
-            class HasEmotion(RelationshipModel):
+            class HasEmotion(Relationship):
                 ogm_config = {"type": "HAS_EMOTION"}
 
             await neo4j_client.register_models(Human, HasEmotion)
@@ -2593,30 +2593,30 @@ class TestNeo4jModelRegistration:
             assert len(neo4j_client._initialized_model_hashes) == 2
 
         async def test_raises_on_duplicate_node_model_registration(self, neo4j_client):
-            class HumanOne(NodeModel):
+            class HumanOne(Node):
                 ogm_config = {"labels": {"Human"}}
 
-            class HumanTwo(NodeModel):
+            class HumanTwo(Node):
                 ogm_config = {"labels": {"Human"}}
 
             with pytest.raises(DuplicateModelError):
                 await neo4j_client.register_models(HumanOne, HumanTwo)
 
         async def test_raises_on_duplicate_multi_label_node_model_registration(self, neo4j_client):
-            class HumanOne(NodeModel):
+            class HumanOne(Node):
                 ogm_config = {"labels": {"Human", "Special"}}
 
-            class HumanTwo(NodeModel):
+            class HumanTwo(Node):
                 ogm_config = {"labels": {"Human", "Special"}}
 
             with pytest.raises(DuplicateModelError):
                 await neo4j_client.register_models(HumanOne, HumanTwo)
 
         async def test_raises_on_duplicate_relationship_model_registration(self, neo4j_client):
-            class HasEmotionOne(RelationshipModel):
+            class HasEmotionOne(Relationship):
                 ogm_config = {"type": "HAS_EMOTION"}
 
-            class HasEmotionTwo(RelationshipModel):
+            class HasEmotionTwo(Relationship):
                 ogm_config = {"type": "HAS_EMOTION"}
 
             with pytest.raises(DuplicateModelError):
