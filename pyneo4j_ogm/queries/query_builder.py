@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.types.graph import RelationshipDirection
@@ -10,7 +10,7 @@ class QueryBuilder:
     """
 
     @classmethod
-    def node_pattern(
+    def build_node_pattern(
         cls, ref: Optional[str] = None, labels: Optional[Union[List[str], str]] = None, pipe_chaining: bool = False
     ) -> str:
         """
@@ -42,7 +42,7 @@ class QueryBuilder:
         return pattern
 
     @classmethod
-    def relationship_pattern(
+    def build_relationship_pattern(
         cls,
         ref: Optional[str] = None,
         types: Optional[Union[List[str], str]] = None,
@@ -83,8 +83,8 @@ class QueryBuilder:
         else:
             partial_rel_pattern = f"[{normalized_rel_ref}]"
 
-        start_node_pattern = cls.node_pattern(start_node_ref, start_node_labels)
-        end_node_pattern = cls.node_pattern(end_node_ref, end_node_labels)
+        start_node_pattern = cls.build_node_pattern(start_node_ref, start_node_labels)
+        end_node_pattern = cls.build_node_pattern(end_node_ref, end_node_labels)
 
         match direction:
             case RelationshipDirection.INCOMING:
@@ -95,3 +95,24 @@ class QueryBuilder:
                 rel_pattern = f"-{partial_rel_pattern}-"
 
         return f"{start_node_pattern}{rel_pattern}{end_node_pattern}"
+
+    @classmethod
+    def build_set_clause(cls, ref: str, properties: Dict[str, Any]) -> str:
+        """
+        Builds a `SET` clause for use in cypher queries.
+
+        Args:
+            ref (str): The reference to the graph entity used in the SET clause.
+            properties (Dict[str, Any]): A dictionary where the key is the property name and the value
+                is the value to be set.
+
+        Returns:
+            str: The SET clause.
+        """
+        if len(properties) == 0:
+            return ""
+
+        property_expressions = [
+            f"{ref}.{property_name} = {property_value}" for property_name, property_value in properties.items()
+        ]
+        return f"SET {', '.join(property_expressions)}"
