@@ -1,7 +1,7 @@
 # pylint: disable=missing-class-docstring
 
 from pyneo4j_ogm.models.node import Node
-from pyneo4j_ogm.types.graph import EagerFetchStrategy
+from pyneo4j_ogm.types.model import EagerFetchStrategy
 
 
 class TestConfiguration:

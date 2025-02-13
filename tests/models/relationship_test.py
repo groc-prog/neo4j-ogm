@@ -2,7 +2,7 @@
 
 
 from pyneo4j_ogm.models.relationship import Relationship
-from pyneo4j_ogm.types.graph import EagerFetchStrategy
+from pyneo4j_ogm.types.model import EagerFetchStrategy
 
 
 class TestOGMConfiguration:

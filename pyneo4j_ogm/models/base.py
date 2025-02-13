@@ -1,3 +1,4 @@
+import hashlib
 import json
 from abc import abstractmethod
 from copy import deepcopy
@@ -23,6 +24,25 @@ from pyneo4j_ogm.options.model_options import (
 from pyneo4j_ogm.registry import Registry
 
 
+def generate_model_hash(labels_or_type: Union[List[str], str]) -> str:
+    """
+    Returns a hash identifier for the given model. This hash i created from the models type or labels and
+    will be the same for models with the same type/label.
+
+    Args:
+        labels_or_type (Union[List[str], str]): The labels/type of the node/relationship.
+
+    Returns:
+        str: The generated hash.
+    """
+    combined = (
+        f"__relationship_model_{labels_or_type}"
+        if not isinstance(labels_or_type, list)
+        else f"__node_model_{'__'.join(sorted(labels_or_type))}"
+    )
+    return hashlib.sha256(combined.encode()).hexdigest()
+
+
 class ModelBase(BaseModel):
     """
     Base class for all models types. Implements configuration merging and deflation/inflation
@@ -35,6 +55,7 @@ class ModelBase(BaseModel):
     _graph: Optional[neo4j.graph.Graph] = PrivateAttr()
     _registry: Registry = PrivateAttr()
     _ogm_config: ClassVar[Union[ValidatedNodeConfiguration, ValidatedRelationshipConfiguration]] = PrivateAttr()
+    _hash: ClassVar[str]
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

@@ -3,7 +3,7 @@ from typing import ClassVar, Generic, Optional, Self, TypeVar, cast
 import neo4j.graph
 from pydantic import PrivateAttr
 
-from pyneo4j_ogm.models.base import ModelBase
+from pyneo4j_ogm.models.base import ModelBase, generate_model_hash
 from pyneo4j_ogm.models.node import Node
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
@@ -42,6 +42,7 @@ class Relationship(ModelBase, Generic[T, U]):
             cls.ogm_config["type"] = cls.__name__.upper()
 
         cls._ogm_config = ValidatedRelationshipConfiguration.model_validate(cls.ogm_config)
+        cls._hash = generate_model_hash(cls._ogm_config.type)
 
     @property
     def start_node(self) -> Optional[T]:

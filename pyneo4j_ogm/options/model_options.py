@@ -3,8 +3,7 @@ from typing import Any, Callable, Dict, List, Set, Tuple, Union
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import TypedDict
 
-from pyneo4j_ogm.types.graph import EagerFetchStrategy
-from pyneo4j_ogm.types.model import Hooks
+from pyneo4j_ogm.types.model import EagerFetchStrategy, Hooks
 
 HookConfiguration = Union[Callable, Tuple[bool, Callable]]
 

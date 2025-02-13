@@ -19,12 +19,3 @@ class RelationshipDirection(Enum):
     INCOMING = 0
     OUTGOING = 1
     BOTH = 2
-
-
-class EagerFetchStrategy(Enum):
-    """
-    Available strategies used when eagerly fetching neighboring nodes.
-    """
-
-    COMBINED = 0
-    AS_SPLIT_QUERY = 1

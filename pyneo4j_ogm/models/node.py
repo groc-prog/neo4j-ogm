@@ -2,7 +2,7 @@ from typing import ClassVar, List, Set, cast
 
 from pydantic import PrivateAttr
 
-from pyneo4j_ogm.models.base import ModelBase
+from pyneo4j_ogm.models.base import ModelBase, generate_model_hash
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
     NodeConfig,
@@ -40,3 +40,4 @@ class Node(ModelBase):
             cast(List[str], cls.ogm_config["labels"]).append(cls.__name__)
 
         cls._ogm_config = ValidatedNodeConfiguration.model_validate(cls.ogm_config)
+        cls._hash = generate_model_hash(cls._ogm_config.labels)
