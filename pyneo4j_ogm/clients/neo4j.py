@@ -162,9 +162,9 @@ class Neo4jClient(Pyneo4jClient):
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_relationship_pattern("e", label_or_type)
 
         if len(normalized_properties) == 1:
             properties_pattern = f"e.{normalized_properties[0]}"
@@ -206,9 +206,9 @@ class Neo4jClient(Pyneo4jClient):
         properties_pattern = ", ".join(f"e.{property_}" for property_ in normalized_properties)
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_relationship_pattern("e", label_or_type)
 
         logger.debug("Creating range index for %s on properties %s", label_or_type, properties_pattern)
         await self.cypher(f"CREATE INDEX {name}{existence_pattern} FOR {entity_pattern} ON ({properties_pattern})")
@@ -240,9 +240,9 @@ class Neo4jClient(Pyneo4jClient):
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_relationship_pattern("e", label_or_type)
 
         logger.debug("Creating text index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE TEXT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
@@ -274,9 +274,9 @@ class Neo4jClient(Pyneo4jClient):
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_relationship_pattern("e", label_or_type)
 
         logger.debug("Creating point index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE POINT INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")
@@ -311,9 +311,9 @@ class Neo4jClient(Pyneo4jClient):
         properties_pattern = ", ".join(f"e.{property_}" for property_ in normalized_properties)
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", labels_or_types, True)
+            entity_pattern = QueryBuilder.build_node_pattern("e", labels_or_types, True)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", labels_or_types)
+            entity_pattern = QueryBuilder.build_relationship_pattern("e", labels_or_types)
 
         logger.debug("Creating fulltext index for %s on properties %s", labels_or_types, properties_pattern)
         await self.cypher(
@@ -348,9 +348,9 @@ class Neo4jClient(Pyneo4jClient):
         existence_pattern = "" if raise_on_existing else " IF NOT EXISTS"
 
         if entity_type == EntityType.NODE:
-            entity_pattern = QueryBuilder.node_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_node_pattern("e", label_or_type)
         else:
-            entity_pattern = QueryBuilder.relationship_pattern("e", label_or_type)
+            entity_pattern = QueryBuilder.build_relationship_pattern("e", label_or_type)
 
         logger.debug("Creating vector index for %s on property %s", label_or_type, property_)
         await self.cypher(f"CREATE VECTOR INDEX {name}{existence_pattern} FOR {entity_pattern} ON (e.{property_})")

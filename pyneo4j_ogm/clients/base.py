@@ -392,7 +392,7 @@ class Pyneo4jClient(ABC):
 
             yield None
 
-            logger.info("Batching transaction finished")
+            logger.info("Batch transaction finished")
             await self.__commit_transaction(self._session, self._transaction)
             self._session = None
             self._transaction = None
@@ -413,7 +413,7 @@ class Pyneo4jClient(ABC):
         Deletes all nodes and relationships.
         """
         logger.warning("Dropping all nodes and relationships")
-        await self.cypher(f"MATCH {QueryBuilder.node_pattern("n")} DETACH DELETE n")
+        await self.cypher(f"MATCH {QueryBuilder.build_node_pattern("n")} DETACH DELETE n")
         logger.info("All nodes and relationships dropped")
 
     def __identifier_hash(self, labels_or_type: Union[List[str], str]) -> str:

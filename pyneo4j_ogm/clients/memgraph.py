@@ -109,7 +109,7 @@ class MemgraphClient(Pyneo4jClient):
             property_ (str): The property which should be affected by the constraint.
         """
         logger.info("Creating existence constraint on %s", label)
-        node_pattern = QueryBuilder.node_pattern("n", label)
+        node_pattern = QueryBuilder.build_node_pattern("n", label)
 
         logger.debug("Creating existence constraint for %s on property %s", label, property_)
         await self.cypher(f"CREATE CONSTRAINT ON {node_pattern} ASSERT EXISTS (n.{property_})", auto_committing=True)
@@ -127,7 +127,7 @@ class MemgraphClient(Pyneo4jClient):
         logger.info("Creating uniqueness constraint on %s", label)
         normalized_properties = [properties] if isinstance(properties, str) else properties
 
-        node_pattern = QueryBuilder.node_pattern("n", label)
+        node_pattern = QueryBuilder.build_node_pattern("n", label)
         property_pattern = ", ".join(f"n.{property_}" for property_ in normalized_properties)
 
         logger.debug("Creating uniqueness constraint for %s on properties %s", label, property_pattern)
@@ -150,7 +150,7 @@ class MemgraphClient(Pyneo4jClient):
             ClientError: If a data type constraint already exists on the label-property pair.
         """
         logger.info("Creating data type constraint on %s for type %s", label, data_type.value)
-        node_pattern = QueryBuilder.node_pattern("n", label)
+        node_pattern = QueryBuilder.build_node_pattern("n", label)
 
         # Unlike other constraint/index types, the data type constraint throw a error if we try to create
         # another constraint for the same label/property combination
