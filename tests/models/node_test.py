@@ -2,7 +2,7 @@
 
 import json
 from types import NoneType
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import neo4j.graph
 import pytest
@@ -23,6 +23,10 @@ from tests.fixtures.db import (
 from tests.fixtures.registry import reset_registry_state
 
 
+class NotStorable:
+    pass
+
+
 class NestedModel(BaseModel):
     str_field: str
 
@@ -34,6 +38,7 @@ class SimpleNode(Node):
     float_field: float
     tuple_field: Tuple[int, ...]
     list_field: List[int]
+    set_field: Set[int]
 
     ogm_config = {"labels": ["SimpleNode"]}
 
@@ -44,6 +49,19 @@ class NestedNode(Node):
     nested_model: NestedModel
 
     ogm_config = {"labels": ["NestedNode"]}
+
+
+class NonHomogeneousListNode(Node):
+    list_: List[Any]
+
+    ogm_config = {"labels": "NonHomogeneousListNode"}
+
+
+class NonStorableNode(Node):
+    item: NotStorable
+
+    model_config = {"arbitrary_types_allowed": True}
+    ogm_config = {"labels": "NonStorableNode"}
 
 
 class TestConfiguration:
@@ -185,6 +203,7 @@ class TestCreate:
             float_field=1.243,
             tuple_field=tuple([1, 2, 3]),
             list_field=[1, 2, 3],
+            set_field={1, 2, 3},
         )
         await node.create()
 
@@ -216,6 +235,7 @@ class TestCreate:
                 float_field=1.243,
                 tuple_field=tuple([1, 2, 3]),
                 list_field=[1, 2, 3],
+                set_field={1, 2, 3},
             )
 
             assert node.element_id is None
@@ -246,6 +266,7 @@ class TestCreate:
             assert properties["float_field"] == node.float_field
             assert properties["tuple_field"] == list(node.tuple_field)
             assert properties["list_field"] == node.list_field
+            assert sorted(properties["set_field"]) == sorted(list(node.set_field))
 
         async def test_create_nested_node(self, neo4j_session, neo4j_client):
             await neo4j_client.register_models(NestedNode)
@@ -293,6 +314,120 @@ class TestCreate:
 
             assert len(result) == 0
 
+        async def test_create_raises_if_list_is_not_homogenous(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(NonHomogeneousListNode)
+
+            node = NonHomogeneousListNode(list_=[1, "foo", True])
+
+            with pytest.raises(DeflationError):
+                await node.create()
+
+            query = await neo4j_session.run(
+                "MATCH (n:NonHomogeneousListNode) WHERE elementId(n) = $element_id RETURN n",
+                {"element_id": node.element_id},
+            )
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 0
+
+        async def test_create_attempts_to_stringify_forbidden_list_items(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(NonHomogeneousListNode)
+
+            node = NonHomogeneousListNode(list_=[{"value": "stringified"}])
+            await node.create()
+
+            query = await neo4j_session.run(
+                "MATCH (n:NonHomogeneousListNode) WHERE elementId(n) = $element_id RETURN n",
+                {"element_id": node.element_id},
+            )
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 1
+            assert isinstance(result[0][0], neo4j.graph.Node)
+
+            properties = dict(result[0][0])
+            assert result[0][0].id == node.id
+            assert result[0][0].element_id == node.element_id
+            assert properties["list_"] == [json.dumps(node.list_[0])]
+
+        async def test_raises_when_stringify_forbidden_list_items_fails(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(NonHomogeneousListNode)
+
+            node = NonHomogeneousListNode(list_=[{"item": NotStorable()}])
+
+            with pytest.raises(DeflationError):
+                await node.create()
+
+            query = await neo4j_session.run(
+                "MATCH (n:NonHomogeneousListNode) WHERE elementId(n) = $element_id RETURN n",
+                {"element_id": node.element_id},
+            )
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 0
+
+        async def test_raises_when_stringify_properties_are_forbidden_in_lists(self, neo4j_session):
+            client = Neo4jClient()
+            await client.connect(
+                ConnectionString.NEO4J.value, auth=Authentication.NEO4J.value, allow_nested_properties=False
+            )
+            await client.register_models(NonHomogeneousListNode)
+
+            node = NonHomogeneousListNode(list_=[{"item": True}])
+
+            with pytest.raises(DeflationError):
+                await node.create()
+
+            query = await neo4j_session.run(
+                "MATCH (n:NonHomogeneousListNode) WHERE elementId(n) = $element_id RETURN n",
+                {"element_id": node.element_id},
+            )
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 0
+
+        async def test_raises_when_property_is_not_storable_type(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(NonStorableNode)
+
+            node = NonStorableNode(item=NotStorable())
+
+            with pytest.raises(DeflationError):
+                await node.create()
+
+            query = await neo4j_session.run(
+                "MATCH (n:NonStorableNode) WHERE elementId(n) = $element_id RETURN n",
+                {"element_id": node.element_id},
+            )
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 0
+
+        async def test_raises_when_stringify_nested_property_fails(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(NestedNode)
+
+            node = NestedNode(
+                not_nested="not_nested",
+                nested_once={"nested": NotStorable()},
+                nested_model=NestedModel(str_field="str_field"),
+            )
+
+            with pytest.raises(DeflationError):
+                await node.create()
+
+            query = await neo4j_session.run(
+                "MATCH (n:NestedNode) WHERE elementId(n) = $element_id RETURN n",
+                {"element_id": node.element_id},
+            )
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 0
+
     class TestWithMemgraphClient:
         async def test_create_node(self, memgraph_session, memgraph_client):
             await memgraph_client.register_models(SimpleNode)
@@ -310,6 +445,7 @@ class TestCreate:
                 float_field=1.243,
                 tuple_field=tuple([1, 2, 3]),
                 list_field=[1, 2, 3],
+                set_field={1, 2, 3},
             )
 
             assert node.element_id is None
@@ -340,6 +476,7 @@ class TestCreate:
             assert properties["float_field"] == node.float_field
             assert properties["tuple_field"] == list(node.tuple_field)
             assert properties["list_field"] == node.list_field
+            assert sorted(properties["set_field"]) == sorted(list(node.set_field))
 
         async def test_create_nested_node(self, memgraph_session, memgraph_client):
             await memgraph_client.register_models(NestedNode)
@@ -362,3 +499,37 @@ class TestCreate:
             assert properties["not_nested"] == "not_nested"
             assert properties["nested_once"] == node.nested_once
             assert properties["nested_model"] == node.nested_model.model_dump()
+
+        async def test_create_non_homogenous_list_node(self, memgraph_session, memgraph_client):
+            await memgraph_client.register_models(NonHomogeneousListNode)
+
+            node = NonHomogeneousListNode(list_=[1, "foo", True, {"value": "storable"}])
+            await node.create()
+
+            query = await memgraph_session.run(
+                "MATCH (n:NonHomogeneousListNode) WHERE id(n) = $id RETURN n", {"id": node.id}
+            )
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 1
+            assert isinstance(result[0][0], neo4j.graph.Node)
+
+            properties = dict(result[0][0])
+            assert result[0][0].id == node.id
+            assert result[0][0].element_id == node.element_id
+            assert properties["list_"] == node.list_
+
+        async def test_raises_when_property_is_not_storable_type(self, memgraph_session, memgraph_client):
+            await memgraph_client.register_models(NonStorableNode)
+
+            node = NonStorableNode(item=NotStorable())
+
+            with pytest.raises(DeflationError):
+                await node.create()
+
+            query = await memgraph_session.run("MATCH (n:NonStorableNode) WHERE id(n) = $id RETURN n", {"id": node.id})
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 0
