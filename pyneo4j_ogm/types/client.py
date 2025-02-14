@@ -1,4 +1,4 @@
-from typing import Type, TypedDict
+from typing import List, Tuple, Type, TypedDict
 
 from pyneo4j_ogm.models.node import Node
 from pyneo4j_ogm.models.relationship import Relationship
@@ -10,3 +10,6 @@ class CardinalityDefinition(TypedDict):
     end: Type[Node]
     relationship: Type[Relationship]
     type_: Cardinality
+
+
+CardinalityDefinitions = List[Tuple[str, CardinalityDefinition]]

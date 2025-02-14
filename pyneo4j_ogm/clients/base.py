@@ -38,6 +38,7 @@ from pyneo4j_ogm.models.path import Path
 from pyneo4j_ogm.models.relationship import Relationship
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.registry import Registry
+from pyneo4j_ogm.types.client import CardinalityDefinitions
 
 
 class ResolvedModelsCache(TypedDict):
@@ -121,6 +122,7 @@ class Pyneo4jClient(ABC):
     _transaction: Optional[neo4j.AsyncTransaction]
     _initialized_model_hashes: Set[str]
     _registered_models: Dict[str, Union[Type[Node], Type[Relationship]]]
+    _cardinalities: CardinalityDefinitions
     _using_batching: bool
     _skip_constraint_creation: bool
     _skip_index_creation: bool
@@ -136,6 +138,7 @@ class Pyneo4jClient(ABC):
         self._transaction = None
         self._initialized_model_hashes = set()
         self._registered_models = {}
+        self._cardinalities = []
         self._skip_constraint_creation = False
         self._skip_index_creation = False
         self._using_batching = False

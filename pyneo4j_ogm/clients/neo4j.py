@@ -6,6 +6,7 @@ from uuid import uuid4
 import neo4j
 
 from pyneo4j_ogm.clients.base import Pyneo4jClient, ensure_initialized
+from pyneo4j_ogm.data_types.relationship_property import RelationshipProperty
 from pyneo4j_ogm.exceptions import (
     ClientNotInitializedError,
     UnsupportedDatabaseVersionError,
@@ -373,6 +374,17 @@ class Neo4jClient(Pyneo4jClient):
         for model_hash in registered_hashes.difference(self._initialized_model_hashes):
             model = self._registered_models[model_hash]
             entity_type = EntityType.NODE if issubclass(model, Node) else EntityType.RELATIONSHIP
+
+            # Register defined cardinalities for the current model
+            if issubclass(model, Node):
+                for field_name, field in model.model_fields.items():
+                    if field.annotation is not None and issubclass(field.annotation, RelationshipProperty):
+                        logger.debug(
+                            "Adding constraint definitions for property %s for model %s", field_name, model.__name__
+                        )
+
+                        relationship_property = cast(RelationshipProperty, getattr(model, field_name))
+                        self._cardinalities.extend(relationship_property._get_cardinality_definition(model))
 
             if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
                 self._skip_constraint_creation and self._skip_index_creation
