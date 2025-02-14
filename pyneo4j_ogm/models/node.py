@@ -63,8 +63,9 @@ class Node(ModelBase):
 
         logger.info("Creating new node %s", self.__class__.__name__)
         deflated = self._deflate(self.model_dump())
+        set_clause, parameters = QueryBuilder.build_set_clause("n", deflated)
         result, _ = await self._registry.active_client.cypher(
-            f"CREATE {QueryBuilder.build_node_pattern("n", self._ogm_config.labels)} {QueryBuilder.build_set_clause("n", deflated)} RETURN n"
+            f"CREATE {QueryBuilder.build_node_pattern("n", self._ogm_config.labels)} {set_clause} RETURN n", parameters
         )
 
         logger.debug("Hydrating instance with entity values")
