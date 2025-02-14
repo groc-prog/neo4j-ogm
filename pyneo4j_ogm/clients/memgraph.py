@@ -1,8 +1,9 @@
 import re
-from typing import Dict, List, Optional, Type, TypedDict, Union, cast
+from typing import Any, Dict, List, Optional, Type, TypedDict, Union, cast
 from uuid import uuid4
 
 import neo4j.exceptions
+from typing_extensions import get_args, get_origin
 
 from pyneo4j_ogm.clients.base import Pyneo4jClient, ensure_initialized
 from pyneo4j_ogm.data_types.relationship_property import RelationshipProperty
@@ -249,14 +250,31 @@ class MemgraphClient(Pyneo4jClient):
             # Register defined cardinalities for the current model
             if issubclass(model, Node):
                 for field_name, field in model.model_fields.items():
-                    if field.annotation is not None and issubclass(field.annotation, RelationshipProperty):
-                        logger.debug(
-                            "Adding constraint definitions for property %s for model %s", field_name, model.__name__
-                        )
+                    if field.annotation is not None:
+                        # Check if the annotation is a Union and handle accordingly
+                        origin = get_origin(field.annotation)
+                        annotations: List[Type[Any]] = []
 
-                        relationship_property = cast(RelationshipProperty, getattr(model, field_name))
-                        relationship_property._initialize(model, field_name)
-                        self._cardinalities.extend(relationship_property._get_cardinality_definition())
+                        if origin is Union:
+                            annotations.extend(get_args(field.annotation))
+                        else:
+                            annotations.append(field.annotation)
+
+                        for annotation in annotations:
+                            if isinstance(annotation, type) or hasattr(annotation, "__origin__"):
+                                base_annotation = annotation if isinstance(annotation, type) else annotation.__origin__
+
+                                if issubclass(base_annotation, RelationshipProperty):
+                                    logger.debug(
+                                        "Adding constraint definitions for property %s for model %s",
+                                        field_name,
+                                        model.__name__,
+                                    )
+
+                                    relationship_property = cast(RelationshipProperty, getattr(model, field_name))
+                                    relationship_property._initialize(model, field_name)
+                                    self._cardinalities.extend(relationship_property._get_cardinality_definition())
+                                    break
 
             if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
                 self._skip_index_creation and self._skip_constraint_creation
