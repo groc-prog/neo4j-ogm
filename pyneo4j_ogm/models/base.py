@@ -51,8 +51,8 @@ class ModelBase(BaseModel):
 
     _id: Optional[int] = PrivateAttr(None)
     _element_id: Optional[str] = PrivateAttr(None)
-    _graph: Optional[neo4j.graph.Graph] = PrivateAttr()
-    _state_snapshot: Self = PrivateAttr()
+    _graph: Optional[neo4j.graph.Graph] = PrivateAttr(None)
+    _state_snapshot: Optional[Self] = PrivateAttr(None)
 
     _registry: Registry = PrivateAttr()
     _ogm_config: ClassVar[Union[ValidatedNodeConfiguration, ValidatedRelationshipConfiguration]] = PrivateAttr()
