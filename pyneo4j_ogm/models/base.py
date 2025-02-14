@@ -51,8 +51,9 @@ class ModelBase(BaseModel):
 
     _id: Optional[int] = PrivateAttr(None)
     _element_id: Optional[str] = PrivateAttr(None)
-
     _graph: Optional[neo4j.graph.Graph] = PrivateAttr()
+    _state_snapshot: Self = PrivateAttr()
+
     _registry: Registry = PrivateAttr()
     _ogm_config: ClassVar[Union[ValidatedNodeConfiguration, ValidatedRelationshipConfiguration]] = PrivateAttr()
     _hash: ClassVar[str]
@@ -80,20 +81,6 @@ class ModelBase(BaseModel):
         serialized["element_id"] = self._element_id
 
         return serialized
-
-    # @abstractmethod
-    # async def create(self) -> None:
-    #     """
-    #     Inserts the current instance into the database by creating a new graph entity from it. The
-    #     current instance will then be updated with the `id` and `element_id` from the database.
-
-    #     After the method is finished, a newly created instance is seen as `hydrated` and all methods
-    #     can be called on it.
-
-    #     Raises:
-    #         EntityAlreadyCreatedError: If the instance has already been created and hydrated.
-    #     """
-    #     pass  # pragma: no cover
 
     # @abstractmethod
     # async def update(self) -> None:
@@ -138,6 +125,22 @@ class ModelBase(BaseModel):
         """
         return self._id is not None and self._element_id is not None
 
+    @property
+    def modified_fields(self) -> Set[str]:
+        """
+        Set of fields which have been updated since the last sync with the database.
+        """
+        snapshot = cast(Optional[Self], getattr(self, "_state_snapshot", None))
+        if snapshot is None:
+            return set()
+
+        modified: Set[str] = set()
+        for field_name in self.__class__.model_fields.keys():
+            if getattr(self, field_name) != getattr(snapshot, field_name):
+                modified.add(field_name)
+
+        return modified
+
     @classmethod
     def _inflate(cls, graph_entity: Union[neo4j.graph.Node, neo4j.graph.Relationship]) -> Self:
         """
@@ -155,8 +158,6 @@ class ModelBase(BaseModel):
 
         logger.debug("Inflating graph entity %s into model %s", graph_entity.element_id, cls.__name__)
         graph_properties = dict(graph_entity)
-        graph_properties["id"] = graph_entity.id
-        graph_properties["element_id"] = graph_entity.element_id
 
         inflatable: Dict[str, Any] = {}
 
@@ -197,6 +198,8 @@ class ModelBase(BaseModel):
 
         inflated = cls.model_validate(inflatable)
         inflated._graph = graph_entity.graph
+        inflated._element_id = graph_entity.element_id
+        inflated._id = graph_entity.id
         return inflated
 
     @classmethod
@@ -212,10 +215,9 @@ class ModelBase(BaseModel):
         """
         from pyneo4j_ogm.clients.neo4j import Neo4jClient
 
-        client = cls._registry.active_client
-        is_neo4j_client = isinstance(client, Neo4jClient)
+        is_neo4j_client = isinstance(cls._registry.active_client, Neo4jClient)
         stringify_nested_properties = (
-            False if not is_neo4j_client else getattr(client, "_allow_nested_properties", True)
+            False if not is_neo4j_client else getattr(cls._registry.active_client, "_allow_nested_properties", True)
         )
 
         logger.debug("Deflating model %s into storable format", cls.__class__.__name__)

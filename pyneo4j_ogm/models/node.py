@@ -1,13 +1,17 @@
 from typing import ClassVar, List, Set, cast
 
+import neo4j.graph
 from pydantic import PrivateAttr
 
+from pyneo4j_ogm.exceptions import EntityAlreadyCreatedError
+from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.models.base import ModelBase, generate_model_hash
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
     NodeConfig,
     ValidatedNodeConfiguration,
 )
+from pyneo4j_ogm.queries.query_builder import QueryBuilder
 
 
 class Node(ModelBase):
@@ -41,3 +45,32 @@ class Node(ModelBase):
 
         cls._ogm_config = ValidatedNodeConfiguration.model_validate(cls.ogm_config)
         cls._hash = generate_model_hash(cls._ogm_config.labels)
+
+    async def create(self):
+        """
+        Inserts the current instance into the database by creating a new graph entity from it. The
+        current instance will then be updated with the `id` and `element_id` from the database.
+
+        After the method is finished, a newly created instance is seen as `hydrated` and all methods
+        can be called on it.
+
+        Raises:
+            EntityAlreadyCreatedError: If the instance has already been created and hydrated.
+        """
+        if self.hydrated:
+            logger.error("Node %s has already been created with ID %s", self.__class__.__name__, self.element_id)
+            raise EntityAlreadyCreatedError(self.__class__.__name__, cast(str, self.element_id))
+
+        logger.info("Creating new node %s", self.__class__.__name__)
+        deflated = self._deflate(self.model_dump())
+        result, _ = await self._registry.active_client.cypher(
+            f"CREATE {QueryBuilder.build_node_pattern("n", self._ogm_config.labels)} {QueryBuilder.build_set_clause("n", deflated)} RETURN n"
+        )
+
+        logger.debug("Hydrating instance with entity values")
+        self._element_id = cast(neo4j.graph.Node, result[0][0]).element_id
+        self._id = cast(neo4j.graph.Node, result[0][0]).id
+        self._graph = cast(neo4j.graph.Node, result[0][0]).graph
+        self._state_snapshot = self.model_copy()
+
+        logger.info("Created new graph entity %s for model %s", self._element_id, self.__class__.__name__)
