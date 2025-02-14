@@ -108,18 +108,18 @@ class QueryBuilder:
                 is the value to be set.
 
         Returns:
-            Tuple[str, Dict[str, Any]]: The SET clause and all used placeholders.
+            Tuple[str, Dict[str, Any]]: The SET clause and all used parameters.
         """
         if len(properties) == 0:
             return "", {}
 
-        placeholders: Dict[str, Any] = {}
+        parameters: Dict[str, Any] = {}
         expressions: List[str] = []
 
         for property_name, property_value in properties.items():
-            uid = str(uuid4())
+            parameter_name = f"v{str(uuid4()).replace("-", "")}"
 
-            placeholders[uid] = property_value
-            expressions.append(f"{ref}.{property_name} = ${uid}")
+            parameters[parameter_name] = property_value
+            expressions.append(f"{ref}.{property_name} = ${parameter_name}")
 
-        return f"SET {', '.join(expressions)}", placeholders
+        return f"SET {', '.join(expressions)}", parameters

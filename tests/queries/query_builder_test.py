@@ -109,10 +109,11 @@ class TestSetClause:
         with patch("pyneo4j_ogm.queries.query_builder.uuid4", side_effect=mock_uuids):
             clause, placeholders = QueryBuilder.build_set_clause("n", {"prop1": "val1", "prop2": "val2"})
 
-            assert clause == f"SET n.prop1 = ${mock_uuids[0]}, n.prop2 = ${mock_uuids[1]}"
-
-            for uid in mock_uuids:
-                assert str(uid) in placeholders
-
-            assert placeholders[str(mock_uuids[0])] == "val1"
-            assert placeholders[str(mock_uuids[1])] == "val2"
+            assert (
+                clause
+                == "SET n.prop1 = $v11111111111111111111111111111111, n.prop2 = $v22222222222222222222222222222222"
+            )
+            assert "v11111111111111111111111111111111" in placeholders
+            assert "v22222222222222222222222222222222" in placeholders
+            assert placeholders["v11111111111111111111111111111111"] == "val1"
+            assert placeholders["v22222222222222222222222222222222"] == "val2"
