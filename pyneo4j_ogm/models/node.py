@@ -62,7 +62,7 @@ class Node(ModelBase):
             raise EntityAlreadyCreatedError(self.__class__.__name__, cast(str, self.element_id))
 
         logger.info("Creating new node %s", self.__class__.__name__)
-        deflated = self._deflate(self.model_dump())
+        deflated = self._deflate(self.model_dump(exclude={"element_id", "id"}))
         set_clause, parameters = QueryBuilder.build_set_clause("n", deflated)
         result, _ = await self._registry.active_client.cypher(
             f"CREATE {QueryBuilder.build_node_pattern("n", self._ogm_config.labels)} {set_clause} RETURN n", parameters

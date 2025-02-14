@@ -8,6 +8,7 @@ import neo4j.graph
 from pydantic import (
     BaseModel,
     PrivateAttr,
+    SerializationInfo,
     SerializerFunctionWrapHandler,
     model_serializer,
 )
@@ -75,10 +76,23 @@ class ModelBase(BaseModel):
         setattr(cls, "ogm_config", ModelConfigurationValidator(**merged_config).model_dump())
 
     @model_serializer(mode="wrap")
-    def serialize_model(self, handler: SerializerFunctionWrapHandler) -> Dict[str, Any]:
+    def serialize_model(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> Dict[str, Any]:
         serialized = handler(self)
-        serialized["id"] = self._id
-        serialized["element_id"] = self._element_id
+
+        # if info.exclude is None or "id" not in info.exclude or (info.include is not None and "id" in info.include):
+        if (
+            (info.exclude is None or "id" not in info.exclude)
+            and (not info.exclude_none or (info.exclude_none and self._id is not None))
+            and (info.include is None or "id" in info.include)
+        ):
+            serialized["id"] = self._id
+
+        if (
+            (info.exclude is None or "element_id" not in info.exclude)
+            and (not info.exclude_none or (info.exclude_none and self._element_id is not None))
+            and (info.include is None or "element_id" in info.include)
+        ):
+            serialized["element_id"] = self._element_id
 
         return serialized
 
@@ -256,27 +270,24 @@ class ModelBase(BaseModel):
         storable = cls.__to_storable_value(value)
 
         if isinstance(storable, dict):
-            for key, maybe_storable in storable.items():
-                if is_neo4j_client and depth == 0:
-                    # Since Neo4j can not store nested dictionaries, we can either serialized to a string before storage
-                    # or throw an error if this is not enabled
-                    if stringify_nested_properties:
-                        try:
-                            storable[key] = json.dumps(storable)
-                            continue
-                        except Exception as exc:
-                            logger.error("Failed to stringify nested property %s: %s", key, exc)
-                            raise DeflationError(cls.__class__.__name__) from exc
-                    else:
-                        logger.error(
-                            "Encountered nested property %s, but `allow_nested_properties` is set to False", key
-                        )
-                        raise DeflationError(cls.__class__.__name__)
-
-                # Recursively go through all nested properties
-                storable[key] = cls.__ensure_storable_value(
-                    maybe_storable, is_neo4j_client, stringify_nested_properties, depth + 1
-                )
+            if is_neo4j_client and depth == 0:
+                # Since Neo4j can not store nested dictionaries, we can either serialized to a string before storage
+                # or throw an error if this is not enabled
+                if stringify_nested_properties:
+                    try:
+                        storable = json.dumps(storable)
+                    except Exception as exc:
+                        logger.error("Failed to stringify nested property: %s", exc)
+                        raise DeflationError(cls.__class__.__name__) from exc
+                else:
+                    logger.error("Encountered nested property, but `allow_nested_properties` is set to False")
+                    raise DeflationError(cls.__class__.__name__)
+            else:
+                for key, maybe_storable in storable.items():
+                    # Recursively go through all nested properties
+                    storable[key] = cls.__ensure_storable_value(
+                        maybe_storable, is_neo4j_client, stringify_nested_properties, depth + 1
+                    )
         elif isinstance(storable, (list, tuple)):
             is_tuple = False
             type_ = None
@@ -318,8 +329,8 @@ class ModelBase(BaseModel):
                     storable_item, is_neo4j_client, stringify_nested_properties, depth + 1
                 )
 
-                if is_tuple:
-                    storable = tuple(storable)
+            if is_tuple:
+                storable = tuple(storable)
 
         return storable
 
