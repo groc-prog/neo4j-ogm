@@ -255,7 +255,8 @@ class MemgraphClient(Pyneo4jClient):
                         )
 
                         relationship_property = cast(RelationshipProperty, getattr(model, field_name))
-                        self._cardinalities.extend(relationship_property._get_cardinality_definition(model))
+                        relationship_property._initialize(model, field_name)
+                        self._cardinalities.extend(relationship_property._get_cardinality_definition())
 
             if (model._ogm_config.skip_constraint_creation and model._ogm_config.skip_index_creation) or (
                 self._skip_index_creation and self._skip_constraint_creation

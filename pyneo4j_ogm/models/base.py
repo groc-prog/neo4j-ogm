@@ -81,43 +81,43 @@ class ModelBase(BaseModel):
 
         return serialized
 
-    @abstractmethod
-    async def create(self) -> None:
-        """
-        Inserts the current instance into the database by creating a new graph entity from it. The
-        current instance will then be updated with the `id` and `element_id` from the database.
+    # @abstractmethod
+    # async def create(self) -> None:
+    #     """
+    #     Inserts the current instance into the database by creating a new graph entity from it. The
+    #     current instance will then be updated with the `id` and `element_id` from the database.
 
-        After the method is finished, a newly created instance is seen as `hydrated` and all methods
-        can be called on it.
+    #     After the method is finished, a newly created instance is seen as `hydrated` and all methods
+    #     can be called on it.
 
-        Raises:
-            EntityAlreadyCreatedError: If the instance has already been created and hydrated.
-        """
-        pass  # pragma: no cover
+    #     Raises:
+    #         EntityAlreadyCreatedError: If the instance has already been created and hydrated.
+    #     """
+    #     pass  # pragma: no cover
 
-    @abstractmethod
-    async def update(self) -> None:
-        """
-        Updates the corresponding graph entity in the database.
-        """
-        pass  # pragma: no cover
+    # @abstractmethod
+    # async def update(self) -> None:
+    #     """
+    #     Updates the corresponding graph entity in the database.
+    #     """
+    #     pass  # pragma: no cover
 
-    @abstractmethod
-    async def delete(self) -> None:
-        """
-        Deletes the corresponding graph entity in the database.
+    # @abstractmethod
+    # async def delete(self) -> None:
+    #     """
+    #     Deletes the corresponding graph entity in the database.
 
-        After the method is finished, the current instance is seen as `destroyed` and all methods
-        called on it will raise `EntityDestroyedError`.
-        """
-        pass  # pragma: no cover
+    #     After the method is finished, the current instance is seen as `destroyed` and all methods
+    #     called on it will raise `EntityDestroyedError`.
+    #     """
+    #     pass  # pragma: no cover
 
-    @abstractmethod
-    async def refresh(self) -> None:
-        """
-        Refreshes the instance with values from the database.
-        """
-        pass  # pragma: no cover
+    # @abstractmethod
+    # async def refresh(self) -> None:
+    #     """
+    #     Refreshes the instance with values from the database.
+    #     """
+    #     pass  # pragma: no cover
 
     @property
     def element_id(self) -> Optional[str]:

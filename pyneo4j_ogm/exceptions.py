@@ -101,6 +101,18 @@ class DuplicateModelError(Pyneo4jOrmError):
         )
 
 
+class MissingRelationshipPropertyTypes(Pyneo4jOrmError):
+    """
+    A RelationshipProperty is missing types for the node/relationship it is linked to.
+    """
+
+    def __init__(self, model: str, field: str, *args):
+        super().__init__(
+            f"Field {field} in model {model} is missing one or more generics. Both the node and relationship have to be defined when adding new relationship property fields to a model.",
+            *args,
+        )
+
+
 class EntityDestroyedError(Pyneo4jOrmError):
     """
     A method interacting with the database has been called on a deleted entity.
