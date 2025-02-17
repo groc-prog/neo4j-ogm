@@ -234,7 +234,7 @@ class ModelBase(BaseModel):
             False if not is_neo4j_client else getattr(cls._registry.active_client, "_allow_nested_properties", True)
         )
 
-        logger.debug("Deflating model %s into storable format", cls.__class__.__name__)
+        logger.debug("Deflating model %s into storable format", cls.__name__)
         deflated = deepcopy(dict_model)
 
         for key, value in deflated.items():
@@ -278,10 +278,10 @@ class ModelBase(BaseModel):
                         storable = json.dumps(storable)
                     except Exception as exc:
                         logger.error("Failed to stringify nested property: %s", exc)
-                        raise DeflationError(cls.__class__.__name__) from exc
+                        raise DeflationError(cls.__name__) from exc
                 else:
                     logger.error("Encountered nested property, but `allow_nested_properties` is set to False")
-                    raise DeflationError(cls.__class__.__name__)
+                    raise DeflationError(cls.__name__)
             else:
                 for key, maybe_storable in storable.items():
                     # Recursively go through all nested properties
@@ -310,19 +310,21 @@ class ModelBase(BaseModel):
                         try:
                             storable_item = json.dumps(storable_item)
                         except Exception as exc:
-                            logger.error("Failed to stringify nested property %s: %s", key, exc)
-                            raise DeflationError(cls.__class__.__name__) from exc
+                            logger.error("Failed to stringify nested property in model %s: %s", cls.__name__, exc)
+                            raise DeflationError(cls.__name__) from exc
                     else:
                         logger.error(
-                            "Encountered unsupported collection property %s, but `allow_nested_properties` is set to False",
-                            key,
+                            "Encountered unsupported collection property in model %s, but `allow_nested_properties` is set to False",
+                            cls.__name__,
                         )
-                        raise DeflationError(cls.__class__.__name__)
+                        raise DeflationError(cls.__name__)
 
                 # Check whether the collection is homogeneous
                 if is_neo4j_client and type_ is not None and type_ is not type(storable_item):
-                    logger.error("Found non-homogeneous collection property %s while using Neo4j client", key)
-                    raise DeflationError(cls.__class__.__name__)
+                    logger.error(
+                        "Found non-homogeneous collection property in model %s while using Neo4j client", cls.__name__
+                    )
+                    raise DeflationError(cls.__name__)
 
                 type_ = type(storable_item)
                 cast(List, storable)[index] = cls.__ensure_storable_value(
@@ -357,7 +359,7 @@ class ModelBase(BaseModel):
             return list(value)
 
         logger.error("Non storable type %s could not be parsed", type(value))
-        raise DeflationError(cls.__class__.__name__)
+        raise DeflationError(cls.__name__)
 
     @classmethod
     def __merge_config(cls, current_config: Dict[str, Any], updated_config: Dict[str, Any]) -> Dict[str, Any]:
