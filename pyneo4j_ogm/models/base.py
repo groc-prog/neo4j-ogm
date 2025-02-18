@@ -1,4 +1,3 @@
-import hashlib
 import json
 from abc import abstractmethod
 from copy import deepcopy
@@ -25,25 +24,6 @@ from pyneo4j_ogm.options.model_options import (
 from pyneo4j_ogm.registry import Registry
 
 
-def generate_model_hash(labels_or_type: Union[List[str], str]) -> str:
-    """
-    Returns a hash identifier for the given model. This hash i created from the models type or labels and
-    will be the same for models with the same type/label.
-
-    Args:
-        labels_or_type (Union[List[str], str]): The labels/type of the node/relationship.
-
-    Returns:
-        str: The generated hash.
-    """
-    combined = (
-        f"__relationship_model_{labels_or_type}"
-        if not isinstance(labels_or_type, list)
-        else f"__node_model_{'__'.join(sorted(labels_or_type))}"
-    )
-    return hashlib.sha256(combined.encode()).hexdigest()
-
-
 class ModelBase(BaseModel):
     """
     Base class for all models types. Implements configuration merging and deflation/inflation
@@ -52,6 +32,7 @@ class ModelBase(BaseModel):
 
     _id: Optional[int] = PrivateAttr(None)
     _element_id: Optional[str] = PrivateAttr(None)
+    _destroyed: bool = PrivateAttr(False)
     _graph: Optional[neo4j.graph.Graph] = PrivateAttr(None)
     _state_snapshot: Optional[Self] = PrivateAttr(None)
 
@@ -96,12 +77,16 @@ class ModelBase(BaseModel):
 
         return serialized
 
-    # @abstractmethod
-    # async def update(self) -> None:
-    #     """
-    #     Updates the corresponding graph entity in the database.
-    #     """
-    #     pass  # pragma: no cover
+    @abstractmethod
+    async def update(self) -> None:
+        """
+        Updates the corresponding graph entity in the database and synchronizes it's properties
+        with the current instance.
+
+        Raises:
+            EntityNotFoundError: If the entity is not found in the graph.
+        """
+        pass  # pragma: no cover
 
     # @abstractmethod
     # async def delete(self) -> None:
@@ -138,6 +123,13 @@ class ModelBase(BaseModel):
         Whether the property has been hydrated.
         """
         return self._id is not None and self._element_id is not None
+
+    @property
+    def destroyed(self) -> bool:
+        """
+        Whether the instance has been destroyed by calling `.destroy()` on it.
+        """
+        return self._destroyed
 
     @property
     def modified_fields(self) -> Set[str]:
@@ -219,7 +211,7 @@ class ModelBase(BaseModel):
     @classmethod
     def _deflate(cls, dict_model: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Deflates the current model instance into a dictionary which can be stored by the Neo4j driver.
+        Deflates the provided model instance into a dictionary which can be stored by the Neo4j driver.
 
         Args:
             dict_model (Dict[str, Any]): The model to deflate as a dictionary.

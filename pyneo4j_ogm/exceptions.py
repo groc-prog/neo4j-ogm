@@ -3,6 +3,8 @@
 
 from typing import List, Optional, Union
 
+from pyneo4j_ogm.types.graph import EntityType
+
 
 class Pyneo4jOrmError(Exception):
     """
@@ -142,8 +144,22 @@ class EntityNotHydratedError(Pyneo4jOrmError):
     The instance has not been hydrated yet.
     """
 
-    def __init__(self, model_name: str, *args) -> None:
+    def __init__(self, *args) -> None:
         super().__init__(
-            f"The {model_name} instance has not been hydrated yet. Call the .create() method to create the entity in the database",
+            "The model instance has not been hydrated yet. Call the .create() method to create the entity in the database",
+            *args,
+        )
+
+
+class EntityNotFoundError(Pyneo4jOrmError):
+    """
+    No entity matched by the ID or ElementId was found in the graph.
+    """
+
+    def __init__(self, entity_type: EntityType, labels_or_type: Union[List[str], str], id_: str, *args):
+        entity_type_log = "node" if entity_type == EntityType.NODE else "relationship"
+        labels_or_type_log = ":".join(labels_or_type) if isinstance(labels_or_type, list) else labels_or_type
+        super().__init__(
+            f"No {entity_type_log} of type {labels_or_type_log} was found for id {id_}. This usually means you have some concurrency issues or the graph has been updated by another query.",
             *args,
         )

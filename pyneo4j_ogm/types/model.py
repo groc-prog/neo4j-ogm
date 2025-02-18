@@ -7,7 +7,6 @@ Hooks = Union[
     Literal["update"],
     Literal["delete"],
     Literal["refresh"],
-    str,
 ]
 
 

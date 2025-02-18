@@ -3,7 +3,8 @@ from typing import ClassVar, Generic, Optional, Self, TypeVar, cast
 import neo4j.graph
 from pydantic import PrivateAttr
 
-from pyneo4j_ogm.models.base import ModelBase, generate_model_hash
+from pyneo4j_ogm.hash import generate_model_hash
+from pyneo4j_ogm.models.base import ModelBase
 from pyneo4j_ogm.models.node import Node
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,

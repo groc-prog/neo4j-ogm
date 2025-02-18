@@ -3,15 +3,18 @@ from typing import ClassVar, List, Set, cast
 import neo4j.graph
 from pydantic import PrivateAttr
 
-from pyneo4j_ogm.exceptions import EntityAlreadyCreatedError
+from pyneo4j_ogm.exceptions import EntityAlreadyCreatedError, EntityNotFoundError
+from pyneo4j_ogm.hash import generate_model_hash
 from pyneo4j_ogm.logger import logger
-from pyneo4j_ogm.models.base import ModelBase, generate_model_hash
+from pyneo4j_ogm.models.base import ModelBase
+from pyneo4j_ogm.models.decorators import ensure_hydrated, ensure_not_destroyed
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
     NodeConfig,
     ValidatedNodeConfiguration,
 )
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
+from pyneo4j_ogm.types.graph import EntityType
 
 
 class Node(ModelBase):
@@ -63,9 +66,12 @@ class Node(ModelBase):
 
         logger.info("Creating new node %s", self.__class__.__name__)
         deflated = self._deflate(self.model_dump(exclude={"element_id", "id"}))
+
+        match_pattern = QueryBuilder.build_node_pattern("n", self._ogm_config.labels)
         set_clause, parameters = QueryBuilder.build_set_clause("n", deflated)
+
         result, _ = await self._registry.active_client.cypher(
-            f"CREATE {QueryBuilder.build_node_pattern("n", self._ogm_config.labels)} {set_clause} RETURN n", parameters
+            f"CREATE {match_pattern} {set_clause} RETURN n", parameters
         )
 
         logger.debug("Hydrating instance with entity values")
@@ -73,5 +79,25 @@ class Node(ModelBase):
         self._id = cast(neo4j.graph.Node, result[0][0]).id
         self._graph = cast(neo4j.graph.Node, result[0][0]).graph
         self._state_snapshot = self.model_copy()
+        logger.info("Created new node %s for model %s", self._element_id, self.__class__.__name__)
 
-        logger.info("Created new graph entity %s for model %s", self._element_id, self.__class__.__name__)
+    @ensure_hydrated
+    @ensure_not_destroyed
+    async def update(self):
+        update_count = len(self.modified_fields)
+        logger.info("Updating %s properties on node %s", update_count, self._element_id)
+        deflated = self._deflate(self.model_dump(include=self.modified_fields, exclude={"element_id", "id"}))
+
+        match_pattern = QueryBuilder.build_node_pattern("n", self._ogm_config.labels)
+        set_clause, parameters = QueryBuilder.build_set_clause("n", deflated)
+
+        result, _ = await self._registry.active_client.cypher(
+            f"MATCH {match_pattern} {set_clause} RETURN n", parameters
+        )
+
+        if len(result) == 0:
+            raise EntityNotFoundError(EntityType.NODE, self._ogm_config.labels, cast(str, self._element_id))
+
+        logger.debug("Resetting tracked model state")
+        self._state_snapshot = self.model_copy()
+        logger.info("Updated %d properties on model %s", update_count, self._element_id)

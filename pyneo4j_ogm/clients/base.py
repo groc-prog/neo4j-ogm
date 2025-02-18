@@ -31,8 +31,8 @@ from pyneo4j_ogm.exceptions import (
     NoTransactionInProgressError,
     Pyneo4jOrmError,
 )
+from pyneo4j_ogm.hash import generate_model_hash
 from pyneo4j_ogm.logger import logger
-from pyneo4j_ogm.models.base import generate_model_hash
 from pyneo4j_ogm.models.node import Node
 from pyneo4j_ogm.models.path import Path
 from pyneo4j_ogm.models.relationship import Relationship
@@ -56,14 +56,14 @@ def initialize_models_after(func):
 
     Raises:
         ClientNotInitializedError: If the client is not initialized yet.
+        ValueError: If no `_initialize_models` method has been defined.
 
     Returns:
-        Callable: A wrapped function that includes additional functionality for both
-            sync and async functions.
+        Callable: A wrapped function that includes additional functionality for async functions.
     """
 
     @wraps(func)
-    async def wrapper(self, *args, **kwargs) -> None:
+    async def wrapper(self, *args, **kwargs):
         result = await func(self, *args, **kwargs)
 
         if await self.connected():
