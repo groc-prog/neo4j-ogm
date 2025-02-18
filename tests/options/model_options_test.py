@@ -7,13 +7,13 @@ from pyneo4j_ogm.options.model_options import ModelConfigurationValidator
 
 
 class TestModelConfigurationValidator:
-    def test_normalize_pre_hooks_normalization(self):
+    def test_normalize_pre_actions_normalization(self):
         with pytest.raises(ValueError):
-            ModelConfigurationValidator(**{"pre_hooks": False})  # type: ignore
+            ModelConfigurationValidator(**{"pre_actions": False})  # type: ignore
 
-    def test_normalize_post_hooks_normalization(self):
+    def test_normalize_post_actions_normalization(self):
         with pytest.raises(ValueError):
-            ModelConfigurationValidator(**{"post_hooks": False})  # type: ignore
+            ModelConfigurationValidator(**{"post_actions": False})  # type: ignore
 
     def test_normalize_labels_normalization(self):
         with pytest.raises(ValueError):

@@ -369,10 +369,10 @@ class ModelBase(BaseModel):
 
         for key, value in updated_config.items():
             if isinstance(value, dict):
-                # We are handling pre/post hooks, so we merge all the hooks defined
+                # We are handling pre/post actions, so we merge all the actions defined
                 merged_config[key] = cls.__merge_config(merged_config[key], value)
             elif isinstance(value, list):
-                # We deal with sets of hook functions
+                # We deal with sets of action functions
                 if key not in merged_config:
                     merged_config[key] = []
 

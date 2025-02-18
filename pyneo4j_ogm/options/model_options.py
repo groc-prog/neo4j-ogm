@@ -1,11 +1,9 @@
-from typing import Any, Callable, Dict, List, Set, Tuple, Union
+from typing import Any, Dict, List, Set, Union
 
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import TypedDict
 
-from pyneo4j_ogm.types.model import EagerFetchStrategy, Hooks
-
-HookConfiguration = Union[Callable, Tuple[bool, Callable]]
+from pyneo4j_ogm.types.model import ActionFunction, ActionType, EagerFetchStrategy
 
 
 class BaseConfig(TypedDict, total=False):
@@ -13,8 +11,8 @@ class BaseConfig(TypedDict, total=False):
     Configuration options shared by all models.
     """
 
-    pre_hooks: Dict[Hooks, Union[Callable, List[Callable]]]
-    post_hooks: Dict[Hooks, Union[Callable, List[Callable]]]
+    pre_actions: Dict[ActionType, Union[ActionFunction, List[ActionFunction]]]
+    post_actions: Dict[ActionType, Union[ActionFunction, List[ActionFunction]]]
     skip_constraint_creation: bool
     skip_index_creation: bool
     eager_fetch: bool
@@ -42,8 +40,8 @@ class ModelConfigurationValidator(BaseModel):
     Validation model for Node/Relationship model options
     """
 
-    pre_hooks: Dict[Hooks, List[Callable]] = Field({})
-    post_hooks: Dict[Hooks, List[Callable]] = Field({})
+    pre_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    post_actions: Dict[ActionType, List[ActionFunction]] = Field({})
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)
@@ -51,18 +49,18 @@ class ModelConfigurationValidator(BaseModel):
     labels: List[str] = Field([])
     type: str = Field("")
 
-    @field_validator("pre_hooks", "post_hooks", mode="before")
+    @field_validator("pre_actions", "post_actions", mode="before")
     @classmethod
-    def normalize_hooks(cls, value: Any):
+    def normalize_actions(cls, value: Any):
         if not isinstance(value, dict):
-            raise ValueError("Hooks must be a dictionary")
+            raise ValueError("Actions must be defined as a dictionary")
 
         normalized = {}
-        for key, hooks in value.items():
-            if isinstance(hooks, list):
-                normalized[key] = [hook for hook in hooks if callable(hook)]
-            elif callable(hooks):
-                normalized[key] = [hooks]
+        for key, actions in value.items():
+            if isinstance(actions, list):
+                normalized[key] = [action for action in actions if callable(action)]
+            elif callable(actions):
+                normalized[key] = [actions]
 
         return normalized
 
@@ -85,8 +83,8 @@ class ValidatedNodeConfiguration(BaseModel):
     Model for validated node configuration. Mainly used to prevent wrong type-checking.
     """
 
-    pre_hooks: Dict[Hooks, List[Callable]] = Field({})
-    post_hooks: Dict[Hooks, List[Callable]] = Field({})
+    pre_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    post_actions: Dict[ActionType, List[ActionFunction]] = Field({})
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)
@@ -99,8 +97,8 @@ class ValidatedRelationshipConfiguration(BaseModel):
     Model for validated relationship configuration. Mainly used to prevent wrong type-checking.
     """
 
-    pre_hooks: Dict[Hooks, List[Callable]] = Field({})
-    post_hooks: Dict[Hooks, List[Callable]] = Field({})
+    pre_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    post_actions: Dict[ActionType, List[ActionFunction]] = Field({})
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)

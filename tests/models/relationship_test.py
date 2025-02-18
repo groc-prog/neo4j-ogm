@@ -1,8 +1,8 @@
-# pylint: disable=missing-class-docstring
+# pylint: disable=missing-class-docstring, unused-argument
 
 
 from pyneo4j_ogm.models.relationship import Relationship
-from pyneo4j_ogm.types.model import EagerFetchStrategy
+from pyneo4j_ogm.types.model import ActionType, EagerFetchStrategy
 
 
 class TestOGMConfiguration:
@@ -28,47 +28,47 @@ class TestOGMConfiguration:
         assert Likes._ogm_config.type == "LIKES"  # type: ignore
         assert Hates._ogm_config.type == "HATES"  # type: ignore
 
-    def test_single_pre_hook(self):
-        def hook_func():
+    def test_single_pre_action(self):
+        def action_func(ctx, *args, **kwargs):
             pass
 
         class Likes(Relationship):
-            ogm_config = {"pre_hooks": {"create": hook_func}}
+            ogm_config = {"pre_actions": {ActionType.CREATE: action_func}}
 
-        assert Likes._ogm_config.pre_hooks == {"create": [hook_func]}  # type: ignore
+        assert Likes._ogm_config.pre_actions == {ActionType.CREATE: [action_func]}  # type: ignore
 
-    def test_multiple_pre_hook(self):
-        def hook_func_one():
+    def test_multiple_pre_action(self):
+        def action_func_one(ctx, *args, **kwargs):
             pass
 
-        def hook_func_two():
-            pass
-
-        class Likes(Relationship):
-            ogm_config = {"pre_hooks": {"create": [hook_func_one, hook_func_two]}}
-
-        assert Likes._ogm_config.pre_hooks == {"create": [hook_func_one, hook_func_two]}  # type: ignore
-
-    def test_single_post_hook(self):
-        def hook_func():
+        def action_func_two(ctx, *args, **kwargs):
             pass
 
         class Likes(Relationship):
-            ogm_config = {"post_hooks": {"create": hook_func}}
+            ogm_config = {"pre_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
 
-        assert Likes._ogm_config.post_hooks == {"create": [hook_func]}  # type: ignore
+        assert Likes._ogm_config.pre_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
 
-    def test_multiple_post_hook(self):
-        def hook_func_one():
-            pass
-
-        def hook_func_two():
+    def test_single_post_action(self):
+        def action_func(ctx, *args, **kwargs):
             pass
 
         class Likes(Relationship):
-            ogm_config = {"post_hooks": {"create": [hook_func_one, hook_func_two]}}
+            ogm_config = {"post_actions": {ActionType.CREATE: action_func}}
 
-        assert Likes._ogm_config.post_hooks == {"create": [hook_func_one, hook_func_two]}  # type: ignore
+        assert Likes._ogm_config.post_actions == {ActionType.CREATE: [action_func]}  # type: ignore
+
+    def test_multiple_post_action(self):
+        def action_func_one(ctx, *args, **kwargs):
+            pass
+
+        def action_func_two(ctx, *args, **kwargs):
+            pass
+
+        class Likes(Relationship):
+            ogm_config = {"post_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
+
+        assert Likes._ogm_config.post_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
 
     def test_primitive_config_options(self):
         class Likes(Relationship):

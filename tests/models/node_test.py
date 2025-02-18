@@ -1,4 +1,4 @@
-# pylint: disable=missing-class-docstring, unused-import, redefined-outer-name
+# pylint: disable=missing-class-docstring, unused-import, redefined-outer-name, unused-argument
 
 import json
 from types import NoneType
@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from pyneo4j_ogm.clients.neo4j import Neo4jClient
 from pyneo4j_ogm.exceptions import DeflationError, EntityAlreadyCreatedError
 from pyneo4j_ogm.models.node import Node
-from pyneo4j_ogm.types.model import EagerFetchStrategy
+from pyneo4j_ogm.types.model import ActionType, EagerFetchStrategy
 from tests.fixtures.db import (
     Authentication,
     ConnectionString,
@@ -135,47 +135,47 @@ class TestConfiguration:
 
         assert set(Person._ogm_config.labels) == set(["Worker", "HardWorking"])  # type: ignore
 
-    def test_single_pre_hook(self):
-        def hook_func():
+    def test_single_pre_action(self):
+        def action_func(ctx, *args, **kwargs):
             pass
 
         class Person(Node):
-            ogm_config = {"pre_hooks": {"create": hook_func}}
+            ogm_config = {"pre_actions": {ActionType.CREATE: action_func}}
 
-        assert Person._ogm_config.pre_hooks == {"create": [hook_func]}  # type: ignore
+        assert Person._ogm_config.pre_actions == {ActionType.CREATE: [action_func]}  # type: ignore
 
-    def test_multiple_pre_hook(self):
-        def hook_func_one():
+    def test_multiple_pre_action(self):
+        def action_func_one(ctx, *args, **kwargs):
             pass
 
-        def hook_func_two():
-            pass
-
-        class Person(Node):
-            ogm_config = {"pre_hooks": {"create": [hook_func_one, hook_func_two]}}
-
-        assert Person._ogm_config.pre_hooks == {"create": [hook_func_one, hook_func_two]}  # type: ignore
-
-    def test_single_post_hook(self):
-        def hook_func():
+        def action_func_two(ctx, *args, **kwargs):
             pass
 
         class Person(Node):
-            ogm_config = {"post_hooks": {"create": hook_func}}
+            ogm_config = {"pre_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
 
-        assert Person._ogm_config.post_hooks == {"create": [hook_func]}  # type: ignore
+        assert Person._ogm_config.pre_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
 
-    def test_multiple_post_hook(self):
-        def hook_func_one():
-            pass
-
-        def hook_func_two():
+    def test_single_post_action(self):
+        def action_func(ctx, *args, **kwargs):
             pass
 
         class Person(Node):
-            ogm_config = {"post_hooks": {"create": [hook_func_one, hook_func_two]}}
+            ogm_config = {"post_actions": {ActionType.CREATE: action_func}}
 
-        assert Person._ogm_config.post_hooks == {"create": [hook_func_one, hook_func_two]}  # type: ignore
+        assert Person._ogm_config.post_actions == {ActionType.CREATE: [action_func]}  # type: ignore
+
+    def test_multiple_post_action(self):
+        def action_func_one(ctx, *args, **kwargs):
+            pass
+
+        def action_func_two(ctx, *args, **kwargs):
+            pass
+
+        class Person(Node):
+            ogm_config = {"post_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
+
+        assert Person._ogm_config.post_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
 
     def test_primitive_config_options(self):
         class Person(Node):

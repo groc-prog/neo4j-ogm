@@ -1,13 +1,18 @@
 from enum import Enum
-from typing import Literal, Union
+from typing import Awaitable, Callable, TypedDict, Union
 
-# TODO: Add missing hooks here
-Hooks = Union[
-    Literal["create"],
-    Literal["update"],
-    Literal["delete"],
-    Literal["refresh"],
-]
+
+# TODO: Add missing actions here
+class ActionType(Enum):
+    CREATE = "CREATE"
+    UPDATE = "UPDATE"
+
+
+class ActionContext(TypedDict, total=False):
+    type_: ActionType
+
+
+ActionFunction = Callable[[ActionContext, ...], Union[None, Awaitable[None]]]
 
 
 class EagerFetchStrategy(Enum):
