@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
 from pyneo4j_ogm.logger import logger
+from pyneo4j_ogm.registry import Registry
 from pyneo4j_ogm.types.graph import RelationshipDirection
 
 
@@ -9,6 +10,8 @@ class QueryBuilder:
     """
     Class for building common parts of Cypher queries like MATCH patterns.
     """
+
+    _registry: Registry = Registry()
 
     @classmethod
     def build_node_pattern(
@@ -117,9 +120,41 @@ class QueryBuilder:
         expressions: List[str] = []
 
         for property_name, property_value in properties.items():
-            parameter_name = f"v{str(uuid4()).replace("-", "")}"
+            parameter_name = cls.__get_parameter()
 
             parameters[parameter_name] = property_value
             expressions.append(f"{ref}.{property_name} = ${parameter_name}")
 
         return f"SET {', '.join(expressions)}", parameters
+
+    @classmethod
+    def build_element_id_predicate(cls, ref: str, element_id: str) -> Tuple[str, Dict[str, Union[str, int]]]:
+        """
+        Builds a predicate for a `WHERE` clause using a `element id` comparison.
+
+        Args:
+            ref (str): The reference to the graph entity used in the predicate.
+            element_id (str): The element id used in the predicate.
+
+        Returns:
+            Tuple[str, Dict[str, Union[str, int]]]: The predicate query and the used parameters.
+        """
+        from pyneo4j_ogm.clients.neo4j import Neo4jClient
+
+        parameter_name = cls.__get_parameter()
+        is_neo4j_client = isinstance(cls._registry.active_client, Neo4jClient)
+
+        predicate = f"elementId({ref}) = ${parameter_name}" if is_neo4j_client else f"id({ref}) = ${parameter_name}"
+        parameters: Dict[str, Union[str, int]] = {parameter_name: element_id if is_neo4j_client else int(element_id)}
+
+        return predicate, parameters
+
+    @classmethod
+    def __get_parameter(cls) -> str:
+        """
+        Builds a unique query parameter.
+
+        Returns:
+            str: The unique parameter.
+        """
+        return f"v{str(uuid4()).replace("-", "")}"
