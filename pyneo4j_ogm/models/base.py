@@ -14,14 +14,22 @@ from pydantic import (
 from typing_extensions import get_args, get_origin
 
 from pyneo4j_ogm.data_types import ALLOWED_NEO4J_LIST_TYPES, ALLOWED_TYPES
-from pyneo4j_ogm.exceptions import DeflationError, InflationError
+from pyneo4j_ogm.exceptions import DeflationError, EntityNotFoundError, InflationError
 from pyneo4j_ogm.logger import logger
+from pyneo4j_ogm.models.decorators import (
+    ensure_hydrated,
+    ensure_not_destroyed,
+    wrap_with_actions,
+)
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
     ValidatedNodeConfiguration,
     ValidatedRelationshipConfiguration,
 )
+from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.registry import Registry
+from pyneo4j_ogm.types.graph import EntityType
+from pyneo4j_ogm.types.model import ActionType
 
 
 class ModelBase(BaseModel):
@@ -37,12 +45,14 @@ class ModelBase(BaseModel):
     _state_snapshot: Optional[Self] = PrivateAttr(None)
 
     _registry: Registry = PrivateAttr()
+    _excluded_from_inflate: Set[str] = PrivateAttr()
     _ogm_config: ClassVar[Union[ValidatedNodeConfiguration, ValidatedRelationshipConfiguration]] = PrivateAttr()
     _hash: ClassVar[str]
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         cls._registry = Registry()
+        cls._excluded_from_inflate = {"element_id", "id", "graph", "hydrated", "destroyed", "modified_fields"}
 
         parent_config = ModelConfigurationValidator(
             **getattr(
@@ -77,7 +87,9 @@ class ModelBase(BaseModel):
 
         return serialized
 
-    @abstractmethod
+    @ensure_hydrated
+    @ensure_not_destroyed
+    @wrap_with_actions(ActionType.UPDATE)
     async def update(self) -> None:
         """
         Updates the corresponding graph entity in the database and synchronizes it's properties
@@ -86,7 +98,44 @@ class ModelBase(BaseModel):
         Raises:
             EntityNotFoundError: If the entity is not found in the graph.
         """
-        pass  # pragma: no cover
+        from pyneo4j_ogm.models.node import Node
+
+        update_count = len(self.modified_fields)
+        is_node = isinstance(self, Node)
+
+        if update_count == 0:
+            logger.info("No modified properties, skipping query")
+            return
+
+        logger.info(
+            "Updating %s properties on %s %s", update_count, "node" if is_node else "relationship", self._element_id
+        )
+        deflated = self._deflate(self.model_dump(include=self.modified_fields, exclude=self._excluded_from_inflate))
+
+        match_pattern: str
+        set_clause, set_parameters = QueryBuilder.build_set_clause("e", deflated)
+        element_id_predicate, element_id_parameters = QueryBuilder.build_element_id_predicate("e", self._element_id)
+
+        if is_node:
+            match_pattern = QueryBuilder.build_node_pattern("e", self._ogm_config.labels)
+        else:
+            match_pattern = QueryBuilder.build_relationship_pattern("e", self._ogm_config.type)
+
+        result, _ = await self._registry.active_client.cypher(
+            f"MATCH {match_pattern} WHERE {element_id_predicate} {set_clause} RETURN e",
+            {**set_parameters, **element_id_parameters},
+        )
+
+        if len(result) == 0:
+            raise EntityNotFoundError(
+                EntityType.NODE if is_node else EntityType.RELATIONSHIP,
+                self._ogm_config.labels,
+                cast(str, self._element_id),
+            )
+
+        logger.debug("Resetting tracked model state")
+        self._state_snapshot = self.model_copy()
+        logger.info("Updated %d properties on model %s", update_count, self._element_id)
 
     # @abstractmethod
     # async def delete(self) -> None:

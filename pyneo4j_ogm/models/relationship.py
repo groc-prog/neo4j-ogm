@@ -44,6 +44,7 @@ class Relationship(ModelBase, Generic[T, U]):
 
         cls._ogm_config = ValidatedRelationshipConfiguration.model_validate(cls.ogm_config)
         cls._hash = generate_model_hash(cls._ogm_config.type)
+        cls._excluded_from_inflate.update(["start_node", "end_node"])
 
     @property
     def start_node(self) -> Optional[T]:
