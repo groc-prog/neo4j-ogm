@@ -60,19 +60,21 @@ def wrap_with_actions(action: ActionType):
             before_actions = cast(Dict[ActionType, List[ActionFunction]], self._ogm_config.before_actions)
             after_actions = cast(Dict[ActionType, List[ActionFunction]], self._ogm_config.after_actions)
 
-            for action_func in before_actions[action]:
-                if iscoroutinefunction(action_func):
-                    await action_func(ctx, *args, **kwargs)
-                else:
-                    action_func(ctx, *args, **kwargs)
+            if action in before_actions:
+                for action_func in before_actions[action]:
+                    if iscoroutinefunction(action_func):
+                        await action_func(ctx, *args, **kwargs)
+                    else:
+                        action_func(ctx, *args, **kwargs)
 
             result = await wrapped_func(self, *args, **kwargs)
 
-            for action_func in after_actions[action]:
-                if iscoroutinefunction(action_func):
-                    await action_func(ctx, result, *args, **kwargs)
-                else:
-                    action_func(ctx, result, *args, **kwargs)
+            if action in after_actions:
+                for action_func in after_actions[action]:
+                    if iscoroutinefunction(action_func):
+                        await action_func(ctx, result, *args, **kwargs)
+                    else:
+                        action_func(ctx, result, *args, **kwargs)
 
             return result
 
