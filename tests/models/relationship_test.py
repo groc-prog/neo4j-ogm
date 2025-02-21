@@ -33,9 +33,9 @@ class TestOGMConfiguration:
             pass
 
         class Likes(Relationship):
-            ogm_config = {"pre_actions": {ActionType.CREATE: action_func}}
+            ogm_config = {"before_actions": {ActionType.CREATE: action_func}}
 
-        assert Likes._ogm_config.pre_actions == {ActionType.CREATE: [action_func]}  # type: ignore
+        assert Likes._ogm_config.before_actions == {ActionType.CREATE: [action_func]}  # type: ignore
 
     def test_multiple_pre_action(self):
         def action_func_one(ctx, *args, **kwargs):
@@ -45,18 +45,18 @@ class TestOGMConfiguration:
             pass
 
         class Likes(Relationship):
-            ogm_config = {"pre_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
+            ogm_config = {"before_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
 
-        assert Likes._ogm_config.pre_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
+        assert Likes._ogm_config.before_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
 
     def test_single_post_action(self):
         def action_func(ctx, *args, **kwargs):
             pass
 
         class Likes(Relationship):
-            ogm_config = {"post_actions": {ActionType.CREATE: action_func}}
+            ogm_config = {"after_actions": {ActionType.CREATE: action_func}}
 
-        assert Likes._ogm_config.post_actions == {ActionType.CREATE: [action_func]}  # type: ignore
+        assert Likes._ogm_config.after_actions == {ActionType.CREATE: [action_func]}  # type: ignore
 
     def test_multiple_post_action(self):
         def action_func_one(ctx, *args, **kwargs):
@@ -66,9 +66,9 @@ class TestOGMConfiguration:
             pass
 
         class Likes(Relationship):
-            ogm_config = {"post_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
+            ogm_config = {"after_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
 
-        assert Likes._ogm_config.post_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
+        assert Likes._ogm_config.after_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
 
     def test_primitive_config_options(self):
         class Likes(Relationship):

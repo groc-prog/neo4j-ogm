@@ -140,9 +140,9 @@ class TestConfiguration:
             pass
 
         class Person(Node):
-            ogm_config = {"pre_actions": {ActionType.CREATE: action_func}}
+            ogm_config = {"before_actions": {ActionType.CREATE: action_func}}
 
-        assert Person._ogm_config.pre_actions == {ActionType.CREATE: [action_func]}  # type: ignore
+        assert Person._ogm_config.before_actions == {ActionType.CREATE: [action_func]}  # type: ignore
 
     def test_multiple_pre_action(self):
         def action_func_one(ctx, *args, **kwargs):
@@ -152,18 +152,18 @@ class TestConfiguration:
             pass
 
         class Person(Node):
-            ogm_config = {"pre_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
+            ogm_config = {"before_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
 
-        assert Person._ogm_config.pre_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
+        assert Person._ogm_config.before_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
 
     def test_single_post_action(self):
         def action_func(ctx, *args, **kwargs):
             pass
 
         class Person(Node):
-            ogm_config = {"post_actions": {ActionType.CREATE: action_func}}
+            ogm_config = {"after_actions": {ActionType.CREATE: action_func}}
 
-        assert Person._ogm_config.post_actions == {ActionType.CREATE: [action_func]}  # type: ignore
+        assert Person._ogm_config.after_actions == {ActionType.CREATE: [action_func]}  # type: ignore
 
     def test_multiple_post_action(self):
         def action_func_one(ctx, *args, **kwargs):
@@ -173,9 +173,9 @@ class TestConfiguration:
             pass
 
         class Person(Node):
-            ogm_config = {"post_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
+            ogm_config = {"after_actions": {ActionType.CREATE: [action_func_one, action_func_two]}}
 
-        assert Person._ogm_config.post_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
+        assert Person._ogm_config.after_actions == {ActionType.CREATE: [action_func_one, action_func_two]}  # type: ignore
 
     def test_primitive_config_options(self):
         class Person(Node):

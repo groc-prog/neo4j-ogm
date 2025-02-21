@@ -11,8 +11,8 @@ class BaseConfig(TypedDict, total=False):
     Configuration options shared by all models.
     """
 
-    pre_actions: Dict[ActionType, Union[ActionFunction, List[ActionFunction]]]
-    post_actions: Dict[ActionType, Union[ActionFunction, List[ActionFunction]]]
+    before_actions: Dict[ActionType, Union[ActionFunction, List[ActionFunction]]]
+    after_actions: Dict[ActionType, Union[ActionFunction, List[ActionFunction]]]
     skip_constraint_creation: bool
     skip_index_creation: bool
     eager_fetch: bool
@@ -40,8 +40,8 @@ class ModelConfigurationValidator(BaseModel):
     Validation model for Node/Relationship model options
     """
 
-    pre_actions: Dict[ActionType, List[ActionFunction]] = Field({})
-    post_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    before_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    after_actions: Dict[ActionType, List[ActionFunction]] = Field({})
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)
@@ -49,7 +49,7 @@ class ModelConfigurationValidator(BaseModel):
     labels: List[str] = Field([])
     type: str = Field("")
 
-    @field_validator("pre_actions", "post_actions", mode="before")
+    @field_validator("before_actions", "after_actions", mode="before")
     @classmethod
     def normalize_actions(cls, value: Any):
         if not isinstance(value, dict):
@@ -83,8 +83,8 @@ class ValidatedNodeConfiguration(BaseModel):
     Model for validated node configuration. Mainly used to prevent wrong type-checking.
     """
 
-    pre_actions: Dict[ActionType, List[ActionFunction]] = Field({})
-    post_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    before_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    after_actions: Dict[ActionType, List[ActionFunction]] = Field({})
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)
@@ -97,8 +97,8 @@ class ValidatedRelationshipConfiguration(BaseModel):
     Model for validated relationship configuration. Mainly used to prevent wrong type-checking.
     """
 
-    pre_actions: Dict[ActionType, List[ActionFunction]] = Field({})
-    post_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    before_actions: Dict[ActionType, List[ActionFunction]] = Field({})
+    after_actions: Dict[ActionType, List[ActionFunction]] = Field({})
     skip_constraint_creation: bool = Field(False)
     skip_index_creation: bool = Field(False)
     eager_fetch: bool = Field(False)

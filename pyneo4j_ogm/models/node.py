@@ -7,7 +7,11 @@ from pyneo4j_ogm.exceptions import EntityAlreadyCreatedError, EntityNotFoundErro
 from pyneo4j_ogm.hash import generate_model_hash
 from pyneo4j_ogm.logger import logger
 from pyneo4j_ogm.models.base import ModelBase
-from pyneo4j_ogm.models.decorators import ensure_hydrated, ensure_not_destroyed
+from pyneo4j_ogm.models.decorators import (
+    ensure_hydrated,
+    ensure_not_destroyed,
+    wrap_with_actions,
+)
 from pyneo4j_ogm.options.model_options import (
     ModelConfigurationValidator,
     NodeConfig,
@@ -15,6 +19,7 @@ from pyneo4j_ogm.options.model_options import (
 )
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
 from pyneo4j_ogm.types.graph import EntityType
+from pyneo4j_ogm.types.model import ActionType
 
 
 class Node(ModelBase):
@@ -49,6 +54,7 @@ class Node(ModelBase):
         cls._ogm_config = ValidatedNodeConfiguration.model_validate(cls.ogm_config)
         cls._hash = generate_model_hash(cls._ogm_config.labels)
 
+    @wrap_with_actions(ActionType.CREATE)
     async def create(self):
         """
         Inserts the current instance into the database by creating a new graph entity from it. The
