@@ -137,15 +137,40 @@ class ModelBase(BaseModel):
         self._state_snapshot = self.model_copy()
         logger.info("Updated %d properties on model %s", update_count, self._element_id)
 
-    # @abstractmethod
-    # async def delete(self) -> None:
-    #     """
-    #     Deletes the corresponding graph entity in the database.
+    @ensure_hydrated
+    @ensure_not_destroyed
+    @wrap_with_actions(ActionType.DELETE)
+    async def delete(self) -> None:
+        """
+        Deletes the corresponding graph entity in the database.
 
-    #     After the method is finished, the current instance is seen as `destroyed` and all methods
-    #     called on it will raise `EntityDestroyedError`.
-    #     """
-    #     pass  # pragma: no cover
+        After the method is finished, the current instance is seen as `destroyed` and all methods
+        called on it will raise `EntityDestroyedError`.
+        """
+        from pyneo4j_ogm.models.node import Node
+
+        is_node = isinstance(self, Node)
+
+        logger.info("Deleting %s %s", "node" if is_node else "relationship", self._element_id)
+
+        match_pattern: str
+        element_id_predicate, element_id_parameters = QueryBuilder.build_element_id_predicate("e", self._element_id)
+
+        if is_node:
+            match_pattern = QueryBuilder.build_node_pattern("e", self._ogm_config.labels)
+        else:
+            match_pattern = QueryBuilder.build_relationship_pattern("e", self._ogm_config.type)
+
+        await self._registry.active_client.cypher(
+            f"MATCH {match_pattern} WHERE {element_id_predicate} DETACH DELETE e",
+            element_id_parameters,
+        )
+
+        logger.info("Deleted model %s", self._element_id)
+        logger.debug("Marking instance as destroyed")
+        self._destroyed = True
+        self._element_id = None
+        self._id = None
 
     # @abstractmethod
     # async def refresh(self) -> None:

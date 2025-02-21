@@ -6,6 +6,7 @@ from typing import Any, Awaitable, Callable, Dict, Tuple, TypedDict, Union
 class ActionType(Enum):
     CREATE = "CREATE"
     UPDATE = "UPDATE"
+    DELETE = "DELETE"
 
 
 class ActionContext(TypedDict, total=False):
