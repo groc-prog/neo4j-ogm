@@ -27,6 +27,7 @@ from tests.fixtures.db import (
     neo4j_session,
 )
 from tests.fixtures.registry import reset_registry_state
+from tests.helpers.actions import get_async_func, get_sync_func
 
 
 class NotStorable:
@@ -68,32 +69,6 @@ class NonStorableNode(Node):
 
     model_config = {"arbitrary_types_allowed": True}
     ogm_config = {"labels": "NonStorableNode"}
-
-
-def get_sync_func():
-    count = 0
-
-    def sync_mock_func(*args, **kwargs):
-        nonlocal count
-        count = count + 1
-
-    def get_count():
-        return count
-
-    return get_count, sync_mock_func
-
-
-def get_async_func():
-    count = 0
-
-    async def async_mock_func(*args, **kwargs):
-        nonlocal count
-        count = count + 1
-
-    def get_count():
-        return count
-
-    return get_count, async_mock_func
 
 
 async def prepare_simple_node(client) -> SimpleNode:
