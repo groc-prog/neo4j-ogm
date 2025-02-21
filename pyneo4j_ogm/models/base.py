@@ -129,7 +129,7 @@ class ModelBase(BaseModel):
         if len(result) == 0:
             raise EntityNotFoundError(
                 EntityType.NODE if is_node else EntityType.RELATIONSHIP,
-                self._ogm_config.labels,
+                self._ogm_config.labels if is_node else self._ogm_config.type,
                 cast(str, self._element_id),
             )
 
