@@ -89,16 +89,24 @@ class Node(ModelBase):
 
     @ensure_hydrated
     @ensure_not_destroyed
+    @wrap_with_actions(ActionType.UPDATE)
     async def update(self):
         update_count = len(self.modified_fields)
+
+        if update_count == 0:
+            logger.info("No modified properties, skipping query")
+            return
+
         logger.info("Updating %s properties on node %s", update_count, self._element_id)
         deflated = self._deflate(self.model_dump(include=self.modified_fields, exclude={"element_id", "id"}))
 
         match_pattern = QueryBuilder.build_node_pattern("n", self._ogm_config.labels)
-        set_clause, parameters = QueryBuilder.build_set_clause("n", deflated)
+        set_clause, set_parameters = QueryBuilder.build_set_clause("n", deflated)
+        element_id_predicate, element_id_parameters = QueryBuilder.build_element_id_predicate("n", self._element_id)
 
         result, _ = await self._registry.active_client.cypher(
-            f"MATCH {match_pattern} {set_clause} RETURN n", parameters
+            f"MATCH {match_pattern} WHERE {element_id_predicate} {set_clause} RETURN n",
+            {**set_parameters, **element_id_parameters},
         )
 
         if len(result) == 0:

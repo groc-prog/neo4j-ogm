@@ -24,7 +24,7 @@ def ensure_not_destroyed(wrapped_func):
             logger.error("Graph entity %s has already been destroyed", self.__class__.__name__)
             raise EntityDestroyedError()
 
-        return await wrapped_func(*args, **kwargs)
+        return await wrapped_func(self, *args, **kwargs)
 
     return wrapper
 
@@ -46,7 +46,7 @@ def ensure_hydrated(wrapped_func):
             logger.error("Graph entity %s has not been hydrated yet", self.__class__.__name__)
             raise EntityNotHydratedError()
 
-        return await wrapped_func(*args, **kwargs)
+        return await wrapped_func(self, *args, **kwargs)
 
     return wrapper
 

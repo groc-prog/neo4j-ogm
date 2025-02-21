@@ -77,16 +77,16 @@ class ModelBase(BaseModel):
 
         return serialized
 
-    # @abstractmethod
-    # async def update(self) -> None:
-    #     """
-    #     Updates the corresponding graph entity in the database and synchronizes it's properties
-    #     with the current instance.
+    @abstractmethod
+    async def update(self) -> None:
+        """
+        Updates the corresponding graph entity in the database and synchronizes it's properties
+        with the current instance.
 
-    #     Raises:
-    #         EntityNotFoundError: If the entity is not found in the graph.
-    #     """
-    #     pass  # pragma: no cover
+        Raises:
+            EntityNotFoundError: If the entity is not found in the graph.
+        """
+        pass  # pragma: no cover
 
     # @abstractmethod
     # async def delete(self) -> None:
@@ -206,6 +206,10 @@ class ModelBase(BaseModel):
         inflated._graph = graph_entity.graph
         inflated._element_id = graph_entity.element_id
         inflated._id = graph_entity.id
+
+        # Reset modified fields
+        setattr(inflated, "_state_snapshot", inflated.model_copy())
+
         return inflated
 
     @classmethod
