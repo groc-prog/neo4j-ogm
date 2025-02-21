@@ -54,7 +54,6 @@ class Node(ModelBase):
         cls._ogm_config = ValidatedNodeConfiguration.model_validate(cls.ogm_config)
         cls._hash = generate_model_hash(cls._ogm_config.labels)
 
-    @wrap_with_actions(ActionType.CREATE)
     async def create(self):
         """
         Inserts the current instance into the database by creating a new graph entity from it. The

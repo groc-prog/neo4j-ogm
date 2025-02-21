@@ -88,6 +88,7 @@ async def check_no_indexes(session: neo4j.AsyncSession):
     assert len(constraints) == 0
 
 
+@pytest.mark.memgraph
 class TestMemgraphConnection:
     async def test_successful_connect(self):
         client = MemgraphClient()
@@ -156,6 +157,7 @@ class TestMemgraphConnection:
             assert client._driver is None
 
 
+@pytest.mark.memgraph
 class TestMemgraphConstraints:
     class TestMemgraphExistenceConstraint:
         async def test_existence_constraint(self, memgraph_session, memgraph_client):
@@ -563,6 +565,7 @@ class TestMemgraphConstraints:
             assert constraints[0][3] == "POINT"
 
 
+@pytest.mark.memgraph
 class TestMemgraphIndexes:
     class TestMemgraphEntityIndex:
         async def test_node_index(self, memgraph_session, memgraph_client):
@@ -633,6 +636,7 @@ class TestMemgraphIndexes:
             assert constraints[0][2] == "age"
 
 
+@pytest.mark.memgraph
 class TestMemgraphQueries:
     class TestMemgraphUtilities:
         async def test_drop_constraints(self, memgraph_session, memgraph_client):
@@ -1270,6 +1274,7 @@ class TestMemgraphQueries:
                 await memgraph_client.cypher("MATCH path=(:Person)-[:KNOWS]->(:Person) RETURN path")
 
 
+@pytest.mark.memgraph
 class TestMemgraphModelInitialization:
     async def test_skips_initialization_if_all_client_skips_defined(self, memgraph_session):
         class Person(Node):
@@ -2368,6 +2373,7 @@ class TestMemgraphModelInitialization:
                 assert indexes[1][2] == "uid"
 
 
+@pytest.mark.memgraph
 class TestMemgraphModelRegistration:
     class TestMemgraphRegisterModelClass:
         async def test_registers_model_classes(self, memgraph_client):
@@ -2423,7 +2429,7 @@ class TestMemgraphModelRegistration:
     class TestMemgraphRegisterModelDirectory:
         async def test_registers_models_from_dir(self, memgraph_client):
             await memgraph_client.register_models_directory(
-                path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                path.join(path.dirname(__file__), "..", "helpers", "model_imports", "valid")
             )
 
             assert len(memgraph_client._registered_models) == 5
@@ -2431,7 +2437,7 @@ class TestMemgraphModelRegistration:
 
         async def test_ignores_non_python_files(self, memgraph_client):
             await memgraph_client.register_models_directory(
-                path.join(path.dirname(__file__), "..", "model_imports", "invalid_file_type")
+                path.join(path.dirname(__file__), "..", "helpers", "model_imports", "invalid_file_type")
             )
 
             assert len(memgraph_client._registered_models) == 0
@@ -2441,7 +2447,7 @@ class TestMemgraphModelRegistration:
             with patch("importlib.util.spec_from_file_location", return_value=None):
                 with pytest.raises(ImportError):
                     await memgraph_client.register_models_directory(
-                        path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                        path.join(path.dirname(__file__), "..", "helpers", "model_imports", "valid")
                     )
 
         async def test_raises_import_error_on_no_spec_loader_returned(self, memgraph_client):
@@ -2451,13 +2457,13 @@ class TestMemgraphModelRegistration:
             with patch("importlib.util.spec_from_file_location", return_value=mock_spec):
                 with pytest.raises(ImportError):
                     await memgraph_client.register_models_directory(
-                        path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                        path.join(path.dirname(__file__), "..", "helpers", "model_imports", "valid")
                     )
 
         async def test_raises_on_duplicate_model_identifier(self, memgraph_client):
             with pytest.raises(DuplicateModelError):
                 await memgraph_client.register_models_directory(
-                    path.join(path.dirname(__file__), "..", "model_imports", "invalid_duplicate_model")
+                    path.join(path.dirname(__file__), "..", "helpers", "model_imports", "invalid_duplicate_model")
                 )
 
             assert len(memgraph_client._registered_models) == 1

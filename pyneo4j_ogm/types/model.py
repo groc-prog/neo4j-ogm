@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Awaitable, Callable, TypedDict, Union
+from typing import Any, Awaitable, Callable, Dict, Tuple, TypedDict, Union
 
 
 # TODO: Add missing actions here
@@ -12,7 +12,7 @@ class ActionContext(TypedDict, total=False):
     type_: ActionType
 
 
-ActionFunction = Callable[[ActionContext, ...], Union[None, Awaitable[None]]]
+ActionFunction = Callable[[ActionContext, Tuple[Any], Dict[Any, Any]], Union[None, Awaitable[None]]]
 
 
 class EagerFetchStrategy(Enum):

@@ -107,6 +107,7 @@ async def check_no_indexes(session: neo4j.AsyncSession):
     assert len(constraints) == 0
 
 
+@pytest.mark.neo4j
 class TestNeo4jVersionDecorator:
     async def test_raises_when_version_is_none(self):
         @ensure_neo4j_semver_version(1, 1, 1)
@@ -183,6 +184,7 @@ class TestNeo4jVersionDecorator:
             await patch_version.decorated_method()
 
 
+@pytest.mark.neo4j
 class TestNeo4jConnection:
     async def test_successful_connect(self):
         client = Neo4jClient()
@@ -260,6 +262,7 @@ class TestNeo4jConnection:
             assert client._driver is None
 
 
+@pytest.mark.neo4j
 class TestNeo4jConstraints:
     class TestNeo4jUniquenessConstraint:
         async def test_node_uniqueness_constraint(self, neo4j_session, neo4j_client):
@@ -343,6 +346,7 @@ class TestNeo4jConstraints:
                 )
 
 
+@pytest.mark.neo4j
 class TestNeo4jIndexes:
     class TestNeo4jRangeIndex:
         async def test_node_range_index(self, neo4j_session, neo4j_client):
@@ -618,6 +622,7 @@ class TestNeo4jIndexes:
                     await neo4j_client.vector_index("vector_index", EntityType.NODE, "Person", "age")
 
 
+@pytest.mark.neo4j
 class TestNeo4jQueries:
     class TestNeo4jUtilities:
         async def test_drop_constraints(self, neo4j_session, neo4j_client):
@@ -1306,6 +1311,7 @@ class TestNeo4jQueries:
                     await neo4j_client.cypher("MATCH path=(:Person)-[:KNOWS]->(:Person) RETURN path")
 
 
+@pytest.mark.neo4j
 class TestNeo4jModelInitialization:
     async def test_skips_initialization_if_all_client_skips_defined(self, neo4j_session):
         class Person(Node):
@@ -2578,6 +2584,7 @@ class TestNeo4jModelInitialization:
             assert indexes[0][7] == ["uid", "age"]
 
 
+@pytest.mark.neo4j
 class TestNeo4jModelRegistration:
     class TestNeo4jRegisterModelClass:
         async def test_registers_model_classes(self, neo4j_client):
@@ -2633,7 +2640,7 @@ class TestNeo4jModelRegistration:
     class TestNeo4jRegisterModelDirectory:
         async def test_registers_models_from_dir(self, neo4j_client):
             await neo4j_client.register_models_directory(
-                path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                path.join(path.dirname(__file__), "..", "helpers", "model_imports", "valid")
             )
 
             assert len(neo4j_client._registered_models) == 5
@@ -2641,7 +2648,7 @@ class TestNeo4jModelRegistration:
 
         async def test_ignores_non_python_files(self, neo4j_client):
             await neo4j_client.register_models_directory(
-                path.join(path.dirname(__file__), "..", "model_imports", "invalid_file_type")
+                path.join(path.dirname(__file__), "..", "helpers", "model_imports", "invalid_file_type")
             )
 
             assert len(neo4j_client._registered_models) == 0
@@ -2651,7 +2658,7 @@ class TestNeo4jModelRegistration:
             with patch("importlib.util.spec_from_file_location", return_value=None):
                 with pytest.raises(ImportError):
                     await neo4j_client.register_models_directory(
-                        path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                        path.join(path.dirname(__file__), "..", "helpers", "model_imports", "valid")
                     )
 
         async def test_raises_import_error_on_no_spec_loader_returned(self, neo4j_client):
@@ -2661,13 +2668,13 @@ class TestNeo4jModelRegistration:
             with patch("importlib.util.spec_from_file_location", return_value=mock_spec):
                 with pytest.raises(ImportError):
                     await neo4j_client.register_models_directory(
-                        path.join(path.dirname(__file__), "..", "model_imports", "valid")
+                        path.join(path.dirname(__file__), "..", "helpers", "model_imports", "valid")
                     )
 
         async def test_raises_on_duplicate_model_identifier(self, neo4j_client):
             with pytest.raises(DuplicateModelError):
                 await neo4j_client.register_models_directory(
-                    path.join(path.dirname(__file__), "..", "model_imports", "invalid_duplicate_model")
+                    path.join(path.dirname(__file__), "..", "helpers", "model_imports", "invalid_duplicate_model")
                 )
 
             assert len(neo4j_client._registered_models) == 1

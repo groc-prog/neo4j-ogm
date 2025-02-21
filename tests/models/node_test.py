@@ -193,6 +193,7 @@ class TestConfiguration:
 
 
 class TestCreate:
+    @pytest.mark.neo4j
     async def test_raises_if_already_hydrated(self, neo4j_session, neo4j_client):
         await neo4j_client.register_models(SimpleNode)
 
@@ -218,6 +219,7 @@ class TestCreate:
 
         assert len(result) == 0
 
+    @pytest.mark.neo4j
     class TestWithNeo4jClient:
         async def test_create_node(self, neo4j_session, neo4j_client):
             await neo4j_client.register_models(SimpleNode)
@@ -428,6 +430,7 @@ class TestCreate:
 
             assert len(result) == 0
 
+    @pytest.mark.memgraph
     class TestWithMemgraphClient:
         async def test_create_node(self, memgraph_session, memgraph_client):
             await memgraph_client.register_models(SimpleNode)
