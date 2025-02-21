@@ -1,10 +1,14 @@
-# pylint: disable=missing-class-docstring
+# pylint: disable=missing-class-docstring, unused-import
 
 from unittest.mock import patch
 from uuid import UUID
 
+from pyneo4j_ogm.clients.memgraph import MemgraphClient
+from pyneo4j_ogm.clients.neo4j import Neo4jClient
 from pyneo4j_ogm.queries.query_builder import QueryBuilder
+from pyneo4j_ogm.registry import Registry
 from pyneo4j_ogm.types.graph import RelationshipDirection
+from tests.fixtures.registry import reset_registry_state
 
 
 class TestNodePattern:
@@ -117,3 +121,31 @@ class TestSetClause:
             assert "v22222222222222222222222222222222" in placeholders
             assert placeholders["v11111111111111111111111111111111"] == "val1"
             assert placeholders["v22222222222222222222222222222222"] == "val2"
+
+
+class TestElementIdPredicate:
+    def test_neo4j_client(self):
+        registry = Registry()
+        setattr(registry._thread_ctx, "active_client", Neo4jClient())
+
+        mock_uuids = [UUID("11111111-1111-1111-1111-111111111111")]
+
+        with patch("pyneo4j_ogm.queries.query_builder.uuid4", side_effect=mock_uuids):
+            predicate, parameters = QueryBuilder.build_element_id_predicate(
+                "n", "4:03d7c266-8515-4891-94de-e332e899c0b6:15"
+            )
+
+            assert parameters["v11111111111111111111111111111111"] == "4:03d7c266-8515-4891-94de-e332e899c0b6:15"
+            assert predicate == "elementId(n) = $v11111111111111111111111111111111"
+
+    def test_memgraph_client(self):
+        registry = Registry()
+        setattr(registry._thread_ctx, "active_client", MemgraphClient())
+
+        mock_uuids = [UUID("11111111-1111-1111-1111-111111111111")]
+
+        with patch("pyneo4j_ogm.queries.query_builder.uuid4", side_effect=mock_uuids):
+            predicate, parameters = QueryBuilder.build_element_id_predicate("n", "15")
+
+            assert parameters["v11111111111111111111111111111111"] == 15
+            assert predicate == "id(n) = $v11111111111111111111111111111111"
