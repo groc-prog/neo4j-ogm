@@ -1,8 +1,8 @@
 # pylint: disable=missing-class-docstring, unused-import, redefined-outer-name, unused-argument
 
 import json
-from types import NoneType
 from typing import Any, Dict, List, Set, Tuple
+from unittest.mock import Mock
 
 import neo4j.graph
 import pytest
@@ -62,6 +62,32 @@ class NonStorableNode(Node):
 
     model_config = {"arbitrary_types_allowed": True}
     ogm_config = {"labels": "NonStorableNode"}
+
+
+def get_sync_func():
+    count = 0
+
+    def sync_mock_func(*args, **kwargs):
+        nonlocal count
+        count = count + 1
+
+    def get_count():
+        return count
+
+    return get_count, sync_mock_func
+
+
+def get_async_func():
+    count = 0
+
+    async def async_mock_func(*args, **kwargs):
+        nonlocal count
+        count = count + 1
+
+    def get_count():
+        return count
+
+    return get_count, async_mock_func
 
 
 class TestConfiguration:
@@ -193,6 +219,58 @@ class TestConfiguration:
 
 
 class TestCreate:
+    async def test_calls_sync_before_actions_with_context(self, neo4j_client):
+        get_count, mock_func = get_sync_func()
+
+        class NodeWithActions(Node):
+            ogm_config = {"before_actions": {ActionType.CREATE: [mock_func, mock_func]}}
+
+        await neo4j_client.register_models(NodeWithActions)
+
+        node = NodeWithActions()
+        await node.create()
+
+        assert get_count() == 2
+
+    async def test_calls_async_before_actions_with_context(self, neo4j_client):
+        get_count, mock_func = get_async_func()
+
+        class NodeWithActions(Node):
+            ogm_config = {"before_actions": {ActionType.CREATE: [mock_func, mock_func]}}
+
+        await neo4j_client.register_models(NodeWithActions)
+
+        node = NodeWithActions()
+        await node.create()
+
+        assert get_count() == 2
+
+    async def test_calls_sync_after_actions_with_context(self, neo4j_client):
+        get_count, mock_func = get_sync_func()
+
+        class NodeWithActions(Node):
+            ogm_config = {"after_actions": {ActionType.CREATE: [mock_func, mock_func]}}
+
+        await neo4j_client.register_models(NodeWithActions)
+
+        node = NodeWithActions()
+        await node.create()
+
+        assert get_count() == 2
+
+    async def test_calls_async_after_actions_with_context(self, neo4j_client):
+        get_count, mock_func = get_async_func()
+
+        class NodeWithActions(Node):
+            ogm_config = {"after_actions": {ActionType.CREATE: [mock_func, mock_func]}}
+
+        await neo4j_client.register_models(NodeWithActions)
+
+        node = NodeWithActions()
+        await node.create()
+
+        assert get_count() == 2
+
     @pytest.mark.neo4j
     async def test_raises_if_already_hydrated(self, neo4j_session, neo4j_client):
         await neo4j_client.register_models(SimpleNode)
