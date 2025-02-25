@@ -149,6 +149,94 @@ class TestOGMConfiguration:
         assert Likes._ogm_config.eager_fetch_strategy == EagerFetchStrategy.AS_SPLIT_QUERY  # type: ignore
 
 
+class TestSerialization:
+    class EmptyRelationship(Relationship):
+        pass
+
+    def test_includes_id_and_element_id_in_serialization(self):
+        relationship = self.EmptyRelationship()
+        setattr(relationship, "_id", 1)
+        setattr(relationship, "_element_id", "1")
+
+        serialized = relationship.model_dump()
+
+        assert len(serialized.keys()) == 2
+        assert "id" in serialized
+        assert serialized["id"] == 1
+        assert "element_id" in serialized
+        assert serialized["element_id"] == "1"
+
+    def test_excludes_id_if_defined_in_exclude_option(self):
+        relationship = self.EmptyRelationship()
+        setattr(relationship, "_id", 1)
+        setattr(relationship, "_element_id", "1")
+
+        serialized = relationship.model_dump(exclude={"id"})
+
+        assert len(serialized.keys()) == 1
+        assert "id" not in serialized
+        assert "element_id" in serialized
+        assert serialized["element_id"] == "1"
+
+    def test_excludes_id_if_not_defined_in_include_option(self):
+        relationship = self.EmptyRelationship()
+        setattr(relationship, "_id", 1)
+        setattr(relationship, "_element_id", "1")
+
+        serialized = relationship.model_dump(include={"element_id"})
+
+        assert len(serialized.keys()) == 1
+        assert "id" not in serialized
+        assert "element_id" in serialized
+        assert serialized["element_id"] == "1"
+
+    def test_excludes_id_if_is_none_and_exclude_non_option(self):
+        relationship = self.EmptyRelationship()
+        setattr(relationship, "_element_id", "1")
+
+        serialized = relationship.model_dump(exclude_none=True)
+
+        assert len(serialized.keys()) == 1
+        assert "id" not in serialized
+        assert "element_id" in serialized
+        assert serialized["element_id"] == "1"
+
+    def test_excludes_element_id_if_defined_in_exclude_option(self):
+        relationship = self.EmptyRelationship()
+        setattr(relationship, "_id", 1)
+        setattr(relationship, "_element_id", "1")
+
+        serialized = relationship.model_dump(exclude={"element_id"})
+
+        assert len(serialized.keys()) == 1
+        assert "element_id" not in serialized
+        assert "id" in serialized
+        assert serialized["id"] == 1
+
+    def test_excludes_element_id_if_not_defined_in_include_option(self):
+        relationship = self.EmptyRelationship()
+        setattr(relationship, "_id", 1)
+        setattr(relationship, "_element_id", "1")
+
+        serialized = relationship.model_dump(include={"id"})
+
+        assert len(serialized.keys()) == 1
+        assert "element_id" not in serialized
+        assert "id" in serialized
+        assert serialized["id"] == 1
+
+    def test_excludes_element_id_if_is_none_and_exclude_non_option(self):
+        relationship = self.EmptyRelationship()
+        setattr(relationship, "_id", 1)
+
+        serialized = relationship.model_dump(exclude_none=True)
+
+        assert len(serialized.keys()) == 1
+        assert "element_id" not in serialized
+        assert "id" in serialized
+        assert serialized["id"] == 1
+
+
 class TestUpdate:
     async def prepare_relationship_with_actions(self, client, relationship):
         query = await client.run("CREATE (n:StartNode)-[r:RelationshipWithActions]->(m:EndNode) RETURN r")

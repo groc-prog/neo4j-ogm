@@ -1,7 +1,7 @@
 # pylint: disable=missing-class-docstring, unused-import, redefined-outer-name, unused-argument, line-too-long
 
 import json
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from unittest.mock import patch
 
 import neo4j.graph
@@ -71,6 +71,12 @@ class NonStorableNode(Node):
     ogm_config = {"labels": "NonStorableNode"}
 
 
+class NullableNode(Node):
+    optional_str: Optional[str]
+
+    ogm_config = {"labels": "NullableNode"}
+
+
 async def prepare_simple_node(client) -> SimpleNode:
     node = SimpleNode(
         str_field="my_str",
@@ -103,6 +109,94 @@ async def prepare_simple_node(client) -> SimpleNode:
     setattr(node, "_state_snapshot", node.model_copy())
 
     return node
+
+
+class TestSerialization:
+    class EmptyNode(Node):
+        pass
+
+    def test_includes_id_and_element_id_in_serialization(self):
+        node = self.EmptyNode()
+        setattr(node, "_id", 1)
+        setattr(node, "_element_id", "1")
+
+        serialized = node.model_dump()
+
+        assert len(serialized.keys()) == 2
+        assert "id" in serialized
+        assert serialized["id"] == 1
+        assert "element_id" in serialized
+        assert serialized["element_id"] == "1"
+
+    def test_excludes_id_if_defined_in_exclude_option(self):
+        node = self.EmptyNode()
+        setattr(node, "_id", 1)
+        setattr(node, "_element_id", "1")
+
+        serialized = node.model_dump(exclude={"id"})
+
+        assert len(serialized.keys()) == 1
+        assert "id" not in serialized
+        assert "element_id" in serialized
+        assert serialized["element_id"] == "1"
+
+    def test_excludes_id_if_not_defined_in_include_option(self):
+        node = self.EmptyNode()
+        setattr(node, "_id", 1)
+        setattr(node, "_element_id", "1")
+
+        serialized = node.model_dump(include={"element_id"})
+
+        assert len(serialized.keys()) == 1
+        assert "id" not in serialized
+        assert "element_id" in serialized
+        assert serialized["element_id"] == "1"
+
+    def test_excludes_id_if_is_none_and_exclude_non_option(self):
+        node = self.EmptyNode()
+        setattr(node, "_element_id", "1")
+
+        serialized = node.model_dump(exclude_none=True)
+
+        assert len(serialized.keys()) == 1
+        assert "id" not in serialized
+        assert "element_id" in serialized
+        assert serialized["element_id"] == "1"
+
+    def test_excludes_element_id_if_defined_in_exclude_option(self):
+        node = self.EmptyNode()
+        setattr(node, "_id", 1)
+        setattr(node, "_element_id", "1")
+
+        serialized = node.model_dump(exclude={"element_id"})
+
+        assert len(serialized.keys()) == 1
+        assert "element_id" not in serialized
+        assert "id" in serialized
+        assert serialized["id"] == 1
+
+    def test_excludes_element_id_if_not_defined_in_include_option(self):
+        node = self.EmptyNode()
+        setattr(node, "_id", 1)
+        setattr(node, "_element_id", "1")
+
+        serialized = node.model_dump(include={"id"})
+
+        assert len(serialized.keys()) == 1
+        assert "element_id" not in serialized
+        assert "id" in serialized
+        assert serialized["id"] == 1
+
+    def test_excludes_element_id_if_is_none_and_exclude_non_option(self):
+        node = self.EmptyNode()
+        setattr(node, "_id", 1)
+
+        serialized = node.model_dump(exclude_none=True)
+
+        assert len(serialized.keys()) == 1
+        assert "element_id" not in serialized
+        assert "id" in serialized
+        assert serialized["id"] == 1
 
 
 class TestConfiguration:
@@ -579,6 +673,26 @@ class TestCreate:
             assert properties["list_field"] == node.list_field
             assert sorted(properties["set_field"]) == sorted(list(node.set_field))
 
+        async def test_node_with_optional_field(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(NullableNode)
+
+            node = NullableNode(optional_str=None)
+            await node.create()
+
+            query = await neo4j_session.run(
+                "MATCH (n:NullableNode) WHERE elementId(n) = $element_id RETURN n", {"element_id": node.element_id}
+            )
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 1
+            assert isinstance(result[0][0], neo4j.graph.Node)
+
+            properties = dict(result[0][0])
+            assert result[0][0].id == node.id
+            assert result[0][0].element_id == node.element_id
+            assert len(properties.keys()) == 0
+
         async def test_create_nested_node(self, neo4j_session, neo4j_client):
             await neo4j_client.register_models(NestedNode)
 
@@ -789,6 +903,24 @@ class TestCreate:
             assert properties["tuple_field"] == list(node.tuple_field)
             assert properties["list_field"] == node.list_field
             assert sorted(properties["set_field"]) == sorted(list(node.set_field))
+
+        async def test_node_with_optional_field(self, memgraph_session, memgraph_client):
+            await memgraph_client.register_models(NullableNode)
+
+            node = NullableNode(optional_str=None)
+            await node.create()
+
+            query = await memgraph_session.run("MATCH (n:NullableNode) WHERE id(n) = $id RETURN n", {"id": node.id})
+            result = await query.values()
+            await query.consume()
+
+            assert len(result) == 1
+            assert isinstance(result[0][0], neo4j.graph.Node)
+
+            properties = dict(result[0][0])
+            assert result[0][0].id == node.id
+            assert result[0][0].element_id == node.element_id
+            assert len(properties.keys()) == 0
 
         async def test_create_nested_node(self, memgraph_session, memgraph_client):
             await memgraph_client.register_models(NestedNode)
