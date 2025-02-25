@@ -70,7 +70,6 @@ class ModelBase(BaseModel):
     def serialize_model(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> Dict[str, Any]:
         serialized = handler(self)
 
-        # if info.exclude is None or "id" not in info.exclude or (info.include is not None and "id" in info.include):
         if (
             (info.exclude is None or "id" not in info.exclude)
             and (not info.exclude_none or (info.exclude_none and self._id is not None))
@@ -124,6 +123,7 @@ class ModelBase(BaseModel):
         result, _ = await self._registry.active_client.cypher(
             f"MATCH {match_pattern} WHERE {element_id_predicate} {set_clause} RETURN e",
             {**set_parameters, **element_id_parameters},
+            resolve_models=False,
         )
 
         if len(result) == 0:
@@ -164,6 +164,7 @@ class ModelBase(BaseModel):
         await self._registry.active_client.cypher(
             f"MATCH {match_pattern} WHERE {element_id_predicate} DETACH DELETE e",
             element_id_parameters,
+            resolve_models=False,
         )
 
         logger.info("Deleted model %s", self._element_id)
@@ -243,6 +244,12 @@ class ModelBase(BaseModel):
 
         for field_name, field_info in cls.model_fields.items():
             if field_name not in graph_properties:
+                # Fields with a value of `None` are omitted when writing to the DB, so we can assume this is
+                # one of those cases. If not we will get a validation error either way.
+                logger.debug(
+                    "Graph entity %s missing property %s, using None as default", graph_entity.element_id, field_name
+                )
+                inflatable[field_name] = None
                 continue
 
             logger.debug("Inflating property %s", field_name)

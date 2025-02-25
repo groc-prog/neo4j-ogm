@@ -21,6 +21,7 @@ ALLOWED_TYPES = [
     str,
     bytearray,
     tuple,
+    NoneType,
 ]
 
 ALLOWED_NEO4J_LIST_TYPES = [

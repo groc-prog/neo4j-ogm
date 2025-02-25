@@ -72,7 +72,7 @@ class Node(ModelBase):
         set_clause, parameters = QueryBuilder.build_set_clause("e", deflated)
 
         result, _ = await self._registry.active_client.cypher(
-            f"CREATE {match_pattern} {set_clause} RETURN e", parameters
+            f"CREATE {match_pattern} {set_clause} RETURN e", parameters, resolve_models=False
         )
 
         logger.debug("Hydrating instance with entity values")
