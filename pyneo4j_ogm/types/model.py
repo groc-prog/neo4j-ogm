@@ -7,6 +7,7 @@ class ActionType(Enum):
     CREATE = "CREATE"
     UPDATE = "UPDATE"
     DELETE = "DELETE"
+    REFRESH = "REFRESH"
 
 
 class ActionContext(TypedDict, total=False):

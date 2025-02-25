@@ -1,5 +1,4 @@
 import json
-from abc import abstractmethod
 from copy import deepcopy
 from typing import Any, ClassVar, Dict, List, Optional, Self, Set, Union, cast
 
@@ -172,13 +171,6 @@ class ModelBase(BaseModel):
         self._destroyed = True
         self._element_id = None
         self._id = None
-
-    # @abstractmethod
-    # async def refresh(self) -> None:
-    #     """
-    #     Refreshes the instance with values from the database.
-    #     """
-    #     pass  # pragma: no cover
 
     @property
     def element_id(self) -> Optional[str]:
