@@ -1107,3 +1107,147 @@ class TestDelete:
             await query.consume()
 
             assert len(result) == 0
+
+
+class TestRefresh:
+    async def prepare_node_with_actions(self, client, node):
+        query = await client.run("CREATE (n:NodeWithActions) RETURN n")
+        result = await query.values()
+        await query.consume()
+
+        setattr(node, "_element_id", result[0][0].element_id)
+        setattr(node, "_id", result[0][0].id)
+        setattr(node, "_graph", result[0][0].graph)
+
+    @pytest.mark.neo4j
+    async def test_calls_sync_before_actions_with_context(self, neo4j_session, neo4j_client):
+        get_count, mock_func = get_sync_func()
+
+        class NodeWithActions(Node):
+            ogm_config = {"before_actions": {ActionType.REFRESH: [mock_func, mock_func]}, "labels": ["NodeWithActions"]}
+
+        await neo4j_client.register_models(NodeWithActions)
+
+        node = NodeWithActions()
+        await self.prepare_node_with_actions(neo4j_session, node)
+        await node.refresh()
+
+        assert get_count() == 2
+
+    @pytest.mark.neo4j
+    async def test_calls_async_before_actions_with_context(self, neo4j_session, neo4j_client):
+        get_count, mock_func = get_async_func()
+
+        class NodeWithActions(Node):
+            ogm_config = {"before_actions": {ActionType.REFRESH: [mock_func, mock_func]}, "labels": ["NodeWithActions"]}
+
+        await neo4j_client.register_models(NodeWithActions)
+
+        node = NodeWithActions()
+        await self.prepare_node_with_actions(neo4j_session, node)
+        await node.refresh()
+
+        assert get_count() == 2
+
+    @pytest.mark.neo4j
+    async def test_calls_sync_after_actions_with_context(self, neo4j_session, neo4j_client):
+        get_count, mock_func = get_sync_func()
+
+        class NodeWithActions(Node):
+            ogm_config = {"after_actions": {ActionType.REFRESH: [mock_func, mock_func]}, "labels": ["NodeWithActions"]}
+
+        await neo4j_client.register_models(NodeWithActions)
+
+        node = NodeWithActions()
+        await self.prepare_node_with_actions(neo4j_session, node)
+        await node.refresh()
+
+        assert get_count() == 2
+
+    @pytest.mark.neo4j
+    async def test_calls_async_after_actions_with_context(self, neo4j_session, neo4j_client):
+        get_count, mock_func = get_async_func()
+
+        class NodeWithActions(Node):
+            ogm_config = {"after_actions": {ActionType.REFRESH: [mock_func, mock_func]}, "labels": ["NodeWithActions"]}
+
+        await neo4j_client.register_models(NodeWithActions)
+
+        node = NodeWithActions()
+        await self.prepare_node_with_actions(neo4j_session, node)
+        await node.refresh()
+
+        assert get_count() == 2
+
+    @pytest.mark.neo4j
+    async def test_raises_when_not_hydrated(self, neo4j_client):
+        await neo4j_client.register_models(SimpleNode)
+
+        node = SimpleNode(
+            str_field="my_str",
+            bool_field=True,
+            int_field=4,
+            float_field=1.243,
+            tuple_field=tuple([1, 2, 3]),
+            list_field=[1, 2, 3],
+            set_field={1, 2, 3},
+        )
+
+        with pytest.raises(EntityNotHydratedError):
+            await node.refresh()
+
+    @pytest.mark.neo4j
+    async def test_raises_when_destroyed(self, neo4j_session, neo4j_client):
+        await neo4j_client.register_models(SimpleNode)
+
+        node = await prepare_simple_node(neo4j_session)
+        setattr(node, "_destroyed", True)
+
+        with pytest.raises(EntityDestroyedError):
+            await node.refresh()
+
+    @pytest.mark.neo4j
+    class TestWithNeo4jClient:
+        async def test_refresh_node(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(SimpleNode)
+            node = await prepare_simple_node(neo4j_session)
+            element_id = node.element_id
+
+            node.str_field = "something else"
+            assert len(node.modified_fields) == 1
+            assert node.modified_fields == {"str_field"}
+
+            query = await neo4j_session.run(
+                "MATCH (n:SimpleNode) WHERE elementId(n) = $element_id SET n.str_field = $str_field",
+                {"element_id": element_id, "str_field": "updated"},
+            )
+            await query.values()
+            await query.consume()
+
+            await node.refresh()
+
+            assert node.str_field == "updated"
+            assert len(node.modified_fields) == 0
+
+    @pytest.mark.memgraph
+    class TestWithMemgraphClient:
+        async def test_refresh_node(self, memgraph_session, memgraph_client):
+            await memgraph_client.register_models(SimpleNode)
+            node = await prepare_simple_node(memgraph_session)
+            id_ = node.id
+
+            node.str_field = "something else"
+            assert len(node.modified_fields) == 1
+            assert node.modified_fields == {"str_field"}
+
+            query = await memgraph_session.run(
+                "MATCH (n:SimpleNode) WHERE id(n) = $id SET n.str_field = $str_field",
+                {"id": id_, "str_field": "updated"},
+            )
+            await query.values()
+            await query.consume()
+
+            await node.refresh()
+
+            assert node.str_field == "updated"
+            assert len(node.modified_fields) == 0

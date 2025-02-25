@@ -11,6 +11,7 @@ from pyneo4j_ogm.exceptions import (
     EntityNotFoundError,
     EntityNotHydratedError,
 )
+from pyneo4j_ogm.models.node import Node
 from pyneo4j_ogm.models.relationship import Relationship
 from pyneo4j_ogm.types.model import ActionType, EagerFetchStrategy
 from tests.fixtures.db import (
@@ -33,6 +34,14 @@ class SimpleRelationship(Relationship):
     set_field: Set[int]
 
     ogm_config = {"type": "SimpleRelationship"}
+
+
+class StartNode(Node):
+    pass
+
+
+class EndNode(Node):
+    pass
 
 
 async def prepare_simple_relationship(client) -> SimpleRelationship:
@@ -239,7 +248,7 @@ class TestSerialization:
 
 class TestUpdate:
     async def prepare_relationship_with_actions(self, client, relationship):
-        query = await client.run("CREATE (n:StartNode)-[r:RelationshipWithActions]->(m:EndNode) RETURN r")
+        query = await client.run("CREATE (n:StartNode)-[r:RELATIONSHIPWITHACTIONS]->(m:EndNode) RETURN r")
         result = await query.values()
         await query.consume()
 
@@ -358,7 +367,7 @@ class TestUpdate:
 
     @pytest.mark.neo4j
     class TestWithNeo4jClient:
-        async def test_update_node(self, neo4j_session, neo4j_client):
+        async def test_update_relationship(self, neo4j_session, neo4j_client):
             await neo4j_client.register_models(SimpleRelationship)
             relationship = await prepare_simple_relationship(neo4j_session)
 
@@ -414,7 +423,7 @@ class TestUpdate:
 
     @pytest.mark.memgraph
     class TestWithMemgraphClient:
-        async def test_update_node(self, memgraph_session, memgraph_client):
+        async def test_update_relationship(self, memgraph_session, memgraph_client):
             await memgraph_client.register_models(SimpleRelationship)
             relationship = await prepare_simple_relationship(memgraph_session)
 
@@ -469,7 +478,7 @@ class TestUpdate:
 
 class TestDelete:
     async def prepare_relationship_with_actions(self, client, relationship):
-        query = await client.run("CREATE (n:StartNode)-[r:RelationshipWithActions]->(m:EndNode) RETURN r")
+        query = await client.run("CREATE (n:StartNode)-[r:RELATIONSHIPWITHACTIONS]->(m:EndNode) RETURN r")
         result = await query.values()
         await query.consume()
 
@@ -596,7 +605,7 @@ class TestDelete:
 
     @pytest.mark.memgraph
     class TestWithMemgraphClient:
-        async def test_update_relationship(self, memgraph_session, memgraph_client):
+        async def test_delete_relationship(self, memgraph_session, memgraph_client):
             await memgraph_client.register_models(SimpleRelationship)
             relationship = await prepare_simple_relationship(memgraph_session)
             id_ = relationship.id
@@ -610,3 +619,190 @@ class TestDelete:
             await query.consume()
 
             assert len(result) == 0
+
+
+class TestRefresh:
+    async def prepare_relationship_with_actions(self, client, relationship):
+        query = await client.run("CREATE (n:StartNode)-[r:RELATIONSHIPWITHACTIONS]->(m:EndNode) RETURN r")
+        result = await query.values()
+        await query.consume()
+
+        setattr(relationship, "_element_id", result[0][0].element_id)
+        setattr(relationship, "_id", result[0][0].id)
+        setattr(relationship, "_graph", result[0][0].graph)
+
+    @pytest.mark.neo4j
+    async def test_calls_sync_before_actions_with_context(self, neo4j_session, neo4j_client):
+        get_count, mock_func = get_sync_func()
+
+        class RelationshipWithActions(Relationship):
+            ogm_config = {
+                "before_actions": {ActionType.REFRESH: [mock_func, mock_func]},
+                "type": "RelationshipWithActions",
+            }
+
+        await neo4j_client.register_models(RelationshipWithActions)
+
+        relationship = RelationshipWithActions()
+        await self.prepare_relationship_with_actions(neo4j_session, relationship)
+        await relationship.refresh()
+
+        assert get_count() == 2
+
+    @pytest.mark.neo4j
+    async def test_calls_async_before_actions_with_context(self, neo4j_session, neo4j_client):
+        get_count, mock_func = get_async_func()
+
+        class RelationshipWithActions(Relationship):
+            ogm_config = {
+                "before_actions": {ActionType.REFRESH: [mock_func, mock_func]},
+                "type": "RelationshipWithActions",
+            }
+
+        await neo4j_client.register_models(RelationshipWithActions)
+
+        relationship = RelationshipWithActions()
+        await self.prepare_relationship_with_actions(neo4j_session, relationship)
+        await relationship.refresh()
+
+        assert get_count() == 2
+
+    @pytest.mark.neo4j
+    async def test_calls_sync_after_actions_with_context(self, neo4j_session, neo4j_client):
+        get_count, mock_func = get_sync_func()
+
+        class RelationshipWithActions(Relationship):
+            ogm_config = {
+                "after_actions": {ActionType.REFRESH: [mock_func, mock_func]},
+                "type": "RelationshipWithActions",
+            }
+
+        await neo4j_client.register_models(RelationshipWithActions)
+
+        relationship = RelationshipWithActions()
+        await self.prepare_relationship_with_actions(neo4j_session, relationship)
+        await relationship.refresh()
+
+        assert get_count() == 2
+
+    @pytest.mark.neo4j
+    async def test_calls_async_after_actions_with_context(self, neo4j_session, neo4j_client):
+        get_count, mock_func = get_async_func()
+
+        class RelationshipWithActions(Relationship):
+            ogm_config = {
+                "after_actions": {ActionType.REFRESH: [mock_func, mock_func]},
+                "type": "RelationshipWithActions",
+            }
+
+        await neo4j_client.register_models(RelationshipWithActions)
+
+        relationship = RelationshipWithActions()
+        await self.prepare_relationship_with_actions(neo4j_session, relationship)
+        await relationship.refresh()
+
+        assert get_count() == 2
+
+    @pytest.mark.neo4j
+    async def test_raises_when_not_hydrated(self, neo4j_client):
+        await neo4j_client.register_models(SimpleRelationship)
+
+        relationship = SimpleRelationship(
+            str_field="my_str",
+            bool_field=True,
+            int_field=4,
+            float_field=1.243,
+            tuple_field=tuple([1, 2, 3]),
+            list_field=[1, 2, 3],
+            set_field={1, 2, 3},
+        )
+
+        with pytest.raises(EntityNotHydratedError):
+            await relationship.refresh()
+
+    @pytest.mark.neo4j
+    async def test_raises_when_destroyed(self, neo4j_session, neo4j_client):
+        await neo4j_client.register_models(SimpleRelationship)
+
+        relationship = await prepare_simple_relationship(neo4j_session)
+        setattr(relationship, "_destroyed", True)
+
+        with pytest.raises(EntityDestroyedError):
+            await relationship.refresh()
+
+    @pytest.mark.neo4j
+    class TestWithNeo4jClient:
+        async def test_refresh_relationship(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(SimpleRelationship)
+            relationship = await prepare_simple_relationship(neo4j_session)
+            element_id = relationship.element_id
+
+            relationship.str_field = "something else"
+            assert len(relationship.modified_fields) == 1
+            assert relationship.modified_fields == {"str_field"}
+
+            query = await neo4j_session.run(
+                "MATCH ()-[r:SIMPLERELATIONSHIP]->() WHERE elementId(r) = $element_id SET r.str_field = $str_field",
+                {"element_id": element_id, "str_field": "updated"},
+            )
+            await query.values()
+            await query.consume()
+
+            await relationship.refresh()
+
+            assert relationship.str_field == "updated"
+            assert len(relationship.modified_fields) == 0
+            assert relationship.start_node is None
+            assert relationship.end_node is None
+
+        async def test_refreshes_start_and_end_nodes(self, neo4j_session, neo4j_client):
+            await neo4j_client.register_models(SimpleRelationship, StartNode, EndNode)
+            relationship = await prepare_simple_relationship(neo4j_session)
+            element_id = relationship.element_id
+
+            relationship.str_field = "something else"
+            assert len(relationship.modified_fields) == 1
+            assert relationship.modified_fields == {"str_field"}
+
+            query = await neo4j_session.run(
+                "MATCH ()-[r:SIMPLERELATIONSHIP]->() WHERE elementId(r) = $element_id SET r.str_field = $str_field",
+                {"element_id": element_id, "str_field": "updated"},
+            )
+            await query.values()
+            await query.consume()
+
+            await relationship.refresh(True)
+
+            assert relationship.str_field == "updated"
+            assert len(relationship.modified_fields) == 0
+            assert relationship.start_node is not None
+            assert isinstance(relationship.start_node, StartNode)
+            assert relationship.end_node is not None
+            assert isinstance(relationship.end_node, EndNode)
+
+    @pytest.mark.memgraph
+    class TestWithMemgraphClient:
+        async def test_refresh_relationship(self, memgraph_session, memgraph_client):
+            await memgraph_client.register_models(SimpleRelationship, StartNode, EndNode)
+            relationship = await prepare_simple_relationship(memgraph_session)
+            id_ = relationship.id
+
+            relationship.str_field = "something else"
+            assert len(relationship.modified_fields) == 1
+            assert relationship.modified_fields == {"str_field"}
+
+            query = await memgraph_session.run(
+                "MATCH ()-[r:SIMPLERELATIONSHIP]->() WHERE id(r) = $id SET r.str_field = $str_field",
+                {"id": id_, "str_field": "updated"},
+            )
+            await query.values()
+            await query.consume()
+
+            await relationship.refresh(True)
+
+            assert relationship.str_field == "updated"
+            assert len(relationship.modified_fields) == 0
+            assert relationship.start_node is not None
+            assert isinstance(relationship.start_node, StartNode)
+            assert relationship.end_node is not None
+            assert isinstance(relationship.end_node, EndNode)
