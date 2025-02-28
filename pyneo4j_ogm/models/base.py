@@ -3,13 +3,7 @@ from copy import deepcopy
 from typing import Any, ClassVar, Dict, List, Optional, Self, Set, Union, cast
 
 import neo4j.graph
-from pydantic import (
-    BaseModel,
-    PrivateAttr,
-    SerializationInfo,
-    SerializerFunctionWrapHandler,
-    model_serializer,
-)
+from pydantic import BaseModel, PrivateAttr, computed_field
 from typing_extensions import get_args, get_origin
 
 from pyneo4j_ogm.data_types import ALLOWED_NEO4J_LIST_TYPES, ALLOWED_TYPES
@@ -64,26 +58,6 @@ class ModelBase(BaseModel):
 
         merged_config = cls.__merge_config(parent_config.model_dump(), model_config.model_dump())
         setattr(cls, "ogm_config", ModelConfigurationValidator(**merged_config).model_dump())
-
-    @model_serializer(mode="wrap")
-    def serialize_model(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> Dict[str, Any]:
-        serialized = handler(self)
-
-        if (
-            (info.exclude is None or "id" not in info.exclude)
-            and (not info.exclude_none or (info.exclude_none and self._id is not None))
-            and (info.include is None or "id" in info.include)
-        ):
-            serialized["id"] = self._id
-
-        if (
-            (info.exclude is None or "element_id" not in info.exclude)
-            and (not info.exclude_none or (info.exclude_none and self._element_id is not None))
-            and (info.include is None or "element_id" in info.include)
-        ):
-            serialized["element_id"] = self._element_id
-
-        return serialized
 
     @ensure_hydrated
     @ensure_not_destroyed
@@ -172,10 +146,12 @@ class ModelBase(BaseModel):
         self._element_id = None
         self._id = None
 
+    @computed_field
     @property
     def element_id(self) -> Optional[str]:
         return self._element_id
 
+    @computed_field
     @property
     def id(self) -> Optional[int]:
         return self._id
