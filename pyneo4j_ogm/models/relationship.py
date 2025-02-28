@@ -1,7 +1,7 @@
 from typing import ClassVar, Generic, Optional, Self, TypeVar, cast
 
 import neo4j.graph
-from pydantic import PrivateAttr
+from pydantic import PrivateAttr, computed_field
 
 from pyneo4j_ogm.hash import generate_model_hash
 from pyneo4j_ogm.logger import logger
@@ -54,6 +54,7 @@ class Relationship(ModelBase, Generic[T, U]):
         cls._hash = generate_model_hash(cls._ogm_config.type)
         cls._excluded_from_inflate.update(["start_node", "end_node"])
 
+    @computed_field
     @property
     def start_node(self) -> Optional[T]:
         """
@@ -61,6 +62,7 @@ class Relationship(ModelBase, Generic[T, U]):
         """
         return self._start_node
 
+    @computed_field
     @property
     def end_node(self) -> Optional[U]:
         """
